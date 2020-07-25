@@ -1,7 +1,5 @@
 
 
-bin_to_month
-
 
 #' @param x is a data.table with the following columns:
 #' - id: a unique identifier for participant

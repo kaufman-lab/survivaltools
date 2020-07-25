@@ -63,7 +63,8 @@ melt_events <-function(x,id,measure.vars, value.name,type){
 
   key <- data.table(...variable=as.factor(as.character(1:length(measure.vars[[1]]))),
                     type=type)
-  x_long <- key[x_long,on="...variable"]
+  x_long[key,type:=type,on="...variable"]
+  #x_long <- key[x_long,on="...variable"]
   x_long[, ...variable:=NULL]
   x_long[]
 }
