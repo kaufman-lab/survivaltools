@@ -78,13 +78,17 @@ NULL
 #' @param z_tv_covar_names a vector of column names in x corresponding to numeric time-varying covariates
 #' @param covar_coefs A vector of coefficients (same length as x_covar_names)
 #' @param tv_covar_coefs A vector of coefficients (same length as z_tv_covar_names)
+#' @param return_hazard If TRUE, the return data.table will contain an attribute which itself is a data.table
+#' containing ppt-specific hazard at each time-poin.
 #' @export
 simulate_survival <- function(x,
                               z,
                               x_covar_names=NULL,
                               z_tv_covar_names=NULL,
                               covar_coefs=NULL,
-                              tv_covar_coefs=NULL
+                              tv_covar_coefs=NULL,
+                              return_hazard=FALSE
+
 ){
 
   original_names_in_x <- copy(names(x))
@@ -167,9 +171,13 @@ simulate_survival <- function(x,
   by="ppt_id"]
 
   stopifnot(nrow(out)==nrow(x))
-  out[x,on="ppt_id",nomatch=NULL][,c("ppt_id","start","end","event",
+  out2 <- out[x,on="ppt_id",nomatch=NULL][,c("ppt_id","start","end","event",
                                      setdiff(original_names_in_x,c("ppt_id","t_start","t_exit"))
                                      ),
                                   with=FALSE]
+  if(return_hazard){
+    setattr(out2,"hazard",j[,list(ppt_id,time,hazard)])
+  }
+  out2
 }
 
