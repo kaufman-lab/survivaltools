@@ -26,144 +26,52 @@ n_cores <- max(1L,detectCores()-1)
 ```
 
 
-## Basic data functions: enrollment, age,
+## Data generating functions
 
-Create a function to generate basic data (enrollment entry)
+### generating participant data
+
+create_ppt_table is a simple function to randomly generate age at enrollment, date of study entry, and the last possible day of follow-up for a given number of participants:
 ```{r}
+ create_ppt_table(1000)
+```
+Note that the units are always in days since "1970-01-01". It's just easier to work with integers than dates. 
 
-
-## a function which generates ppt table containing
- #t_tstart,t_exit (ie, end of follow-up date), and baseline_age according
- #to specified distributions
-##createa  table with 3 columns: ppt_id,
- #randomly generated enrollement date ("t_start"),
- #a randomly generated baseline age ("baseline_age")
- #a fixed study end date (last possible observable day for all ppts)
-
-create_ppt_table <- function(n){
-  out <-  data.table(
-    ppt_id=1:n,
-    baseline_age=as.integer(floor(
-      55*365.25 + rbinom(n,size=30, prob=.3)*365.25)
-    ),
-    t_start=
-      pmin(
-        as.integer(floor(as.numeric(
-          as.IDate("2000-01-01")+
-            abs(rnorm(n,300,sd=400))
-        )),
-        as.integer(as.IDate("2017-01-01"))
-      ))
-    ,
-    t_exit=as.integer(as.IDate("2017-01-01"))
-  )
-  out[]
-}
-
+Every time this function is called, it generates a new set of participant data: 
+```{r}
+ create_ppt_table(1000)
 ```
 
 
-## the baseline hazard
+### the baseline hazard
 A quick reminder of how baseline hazard works for a cox model:
 
 ```{r}
-
-###h0(x) is the baseline hazard function and h(x|X)=h0(x)*exp(XB)
-#eg:
-baseline_hazard=function(x,ppt){0.000015}
-total_hazard2 <- function(x){baseline_hazard(x)*exp((1/20000)*x)}
-total_hazard2(365*70)/total_hazard2(365*50)
+baseline_hazard=function(x,ppt){0.000003}
+hazard <- function(x){baseline_hazard(x)*exp((1/20000)*x)}
+hazard(365*70)/hazard(365*50)
  #20 years of aging is a HR of ~1.44=exp(20*365*1/20000)
-total_hazard3 <- function(x,s){baseline_hazard(x)*exp((1/20000)*x+2*s)}
-total_hazard3(365*70,1)/total_hazard3(365*70,0) 
-total_hazard3(365*70,1)/total_hazard3(0,1) 
-total_hazard3(365*70,1)/total_hazard3(0,0) 
-
-#smoking RR~7.4=exp(2)
 ```
 
-to do better simulations we'd like a baseline hazard which isn't constant over time and is different
-for each simulation run.
+baseline_hazard $h_0(x)$ and hazard $h(x|X)$ represent functions which vary over time ($x$). The hazard function is just the baseline hazard times a transformed linear function of the covariates $X$: 
+$h(x|X)=h_0(x)*exp(X\beta)$
 
-Here's a function which generates random baseline hazards for every day for every participant.
-Note that the baseline hazard is the same for everyone on a given day, but this function 
-could easily be adapted to have different baseline hazards for different strata.
+We could use a constant hazard in our simulations, but to do more realistic simulations that deal with time-varying data, it's probably better to generate a hazard function that isn't constant over time and is different for each simulation run.
 
-These hazard functions are generated via random points+spline fits, specifically chosen 
-to generate a reasonable baseline hazard (on average about 0.000015 probability of an event a day
-with temporally correlated variations above and below that over time)
-
+I've written an R function which generates a baseline hazards function (using a spline fit to randomly generated points):
 
 
 ```{r}
-
-
-create_hazard_table <- function(ppt_tbl,avg_daily_hazard=0.000003,shape=7.5){
-  x_all <- sort(ppt_tbl[,seq(min(t_start),max(t_exit))])
-  n_points <- max(5, floor(length(x_all)*.01)) #select number of points to generate to build a spline
-  
-  #create a data.frame of n_points randomly selected times in the range plus the start and end times
-  df <- data.frame(x=
-                     c(range(x_all),
-                       sample(setdiff(x_all,range(x_all)),n_points)
-                       )
-                   )
-  
-  #for each time chosen, pick a value from the gamma distribution which will be the hazard at that point
-  df$y <- pmin(rgamma(n=length(df$x),shape=shape,scale=avg_daily_hazard/shape),1)
-  #x <- seq(0,.0001,by=0.000000001)
-  #shape <- 7.5
-  #plot(x,dgamma(x,shape=shape,scale=avg_daily_hazard/shape),type="l")
-  #shape <- 4
-  #lines(x,dgamma(x,shape=shape,scale=avg_daily_hazard/shape),type="l",col="red")
-  #shape <- 10
-  #lines(x,dgamma(x,shape=shape,scale=avg_daily_hazard/shape),type="l",col="green")
-  
-  #estimate a spline based on those points
-  m <- lm(y~splines::bs(x,degree=5),data=df)
-  #plot(y~x,data=df)
-  #lines(x_all,predict(m, newdata=data.frame(x=x_all)))
-  
-    out <- data.table(time=x_all) 
-    out[, baseline_hazard:=pmin(1,pmax(0,predict(m,newdata=data.frame(x=x_all))))]
-    
-    stopifnot(!"original_index"%in%names(ppt_tbl))
-    ppt_tbl[,original_index:=1:.N]
-    ppt_tbl_key <- key(ppt_tbl)
-    on.exit(setkeyv(ppt_tbl,ppt_tbl_key))
-    on.exit(setorderv(ppt_tbl,"original_index"),add=TRUE)
-    on.exit(ppt_tbl[,original_index:=NULL],add=TRUE)
-    
-    out[,time2:=time]
-    
-    setkey(out,time,time2)
-    setkey(ppt_tbl,t_start,t_exit)
-    out <- foverlaps(ppt_tbl, out,nomatch=NULL)[, list(ppt_id,time,baseline_hazard,baseline_age,t_start)]
-    #create time-varying age from baseline age
-    out[,age_tv:=time-t_start+baseline_age]
-    out[,age_since65_tv:=as.integer(floor(age_tv-65*365.25))]
-    
-    
-    out[, baseline_age:=NULL]
-    out[, t_start:=NULL]
-    
-    setkey(out, ppt_id,time)
-    out[]
-      #it's possible, but unlikely, that the spline might predict below 0
-        #even thought the data generating the splines is constrained to be above 0
-  
-}
-
+ppt_tbl <- create_ppt_table(1000)
+hazard_table1 <- create_hazard_table(ppt_tbl)
+plot(hazard_table1[ppt_id==1,]$time,hazard_table1[ppt_id==1,]$baseline_hazard,type="l",col=i,ylim=c(2e-6,3.5e-6))
 ```
 
-note that the resulting hazard function is a function of both ppt_id and time, but the hazard is the same
-for all ppts. 
-
-since the hazard function is the same for everyone, I'm just picking an arbitrary ppt (ppt_id=1) to generate
-some example hazard functions:
+Some details about the specifics of the above code: 
+Note that `create_hazard_table` function generates the same baseline hazard for function for everyone, but is stored such that every participant has their own set of hazard values for every day. (This formulation of the hazard function/dataset is a good format to input into simulation code because this format would generalize to a situation where different subjects have different baseline hazards). 
 
 
-plot some baseline hazards:
+
+`create_hazard_table` will generate a new set of baseline hazards every time it's called. Here we plot several different baseline hazards:
 
 ```{r}
 
@@ -173,108 +81,27 @@ par(mfrow=c(1,1))
     ppt_tbl <- create_ppt_table(1000)
     hazard_table1 <- create_hazard_table(ppt_tbl)
     if(i==1){
-      hazard_table1[J(i), plot(time,baseline_hazard,type="l",col=i,ylim=c(1e-5,2e-5)),on="ppt_id"]
+      hazard_table1[J(i), plot(time,baseline_hazard,type="l",col=i,ylim=c(2e-6,3.5e-6)),on="ppt_id"]
     } else{
-      hazard_table1[J(i), lines(time,baseline_hazard,type="l",col=i,ylim=c(1e-5,2e-5)),on="ppt_id"]
+      hazard_table1[J(i), lines(time,baseline_hazard,type="l",col=i,ylim=c(2e-6,3.5e-6)),on="ppt_id"]
     }
   }
 ```
 
-Note that these hazard occur over a very tight range around ~0.000015
-This is the baseline probabiltiy of an event occuring on a single day.
+Note that these hazard occur over a very tight range around ~0.000003 (the default for create_hazard_table). This corresponds to a reasonable hazard (or conditional probability) when the x axis is units of days.
 
 ### time-varying variables:  exposure
 
-Next let's generate some time-varying exposures. e.g. something like PM2.5.
+In addition to generate participant recruitment timing information and the baseline hazard function, we also need a function to generate time-varying covariates such as PM2.5.
 
-We'll use the conceptual framework of the spatiotemporal model to generate exposures with 
-some set of temporal trends common to everyone and each individual has a randomly generated coefficient
-to that temporal trend. Note that I'm not explicitly modeling space here 
-(just picking beta-field values randomly) and as such it's not possible to induce spatial confounding
-in the simulation (just temporal confounding).
+First the function generates four temporal trends:
+- a constant term 
+- a linear term.
+- two temporal trends are random curves (splines fit to random points).
 
-The first temporal trend is constant, the second and third temporal trends are random splines, and the 
-third temporal trend is a linear function of time.
+By default the trends have a negative slope on average (ie air pollution decreases over time).
 
-The coefficients of the first temporal trend have mean 18. the spline coefficeints have mean zero.
-The coefficients of the linear term are mean -0.0009 (creating a linear secular trend on top of shorter 
-term variations.)
-
-
-```{r}
-
-
-
-create_exposure_table <- function(ppt_tbl,n_years=2L){
-  #add an extra year to so you don't get weird divergence at the beginggin/end of the spline
-  max_texit <-  max(ppt_tbl$t_exit)+365L
-  min_tstart <- min(ppt_tbl$t_start)-365L*(n_years+1) 
-  #need n_years years of data prior to the minimum start date to calculate a n_years year avg
-   
-    x_all_original <- sort(ppt_tbl[,seq(min(t_start),max(t_exit))])
-    x_all <- sort(ppt_tbl[,seq(min_tstart,max_texit)])
-    n_points <- max(5, floor(length(x_all)*.05))
-    #two splines
-  df <- data.frame(x1=c(range(x_all),sample(setdiff(x_all,range(x_all)),n_points)),
-                   x2=c(range(x_all),sample(setdiff(x_all,range(x_all)),n_points))
-                   )
-  
-  df$y1 <- rnorm(nrow(df),mean=0,sd=20)
-  df$y2 <- rnorm(nrow(df),mean=0,sd=20)
-  m1 <- lm(y1~splines::bs(x1,degree=30),data=df)
-  m2 <- lm(y2~splines::bs(x2,degree=30),data=df)
-  
-  #a matrix of covariate data used to generate a single pm25 spline
-    #covariates are: a constant, two splines, a linear term where 
-   #"zero" is the first observed day in ppt_tbl 
-      #having that be the zero makes picking a slope easier
-  covar <- cbind(1,
-                 predict(m1,newdata=data.frame(x1=x_all)),
-                 predict(m2,newdata=data.frame(x2=x_all)),
-                 x_all-min(x_all)
-  )
-
-  
-  #plot(s1~x,data=df_timesplines, type="l",col="blue")
-  #lines(s2~x,data=df_timesplines, col="green")
-  
-  #a matrix of beta-fields. ie: ppt-specific coefficients to splines
-  #rows are ppt, columns are variables
-  b <- cbind(rnorm(nrow(ppt_tbl),mean=18,sd=1), 
-             rnorm(nrow(ppt_tbl),sd=.4),
-             rnorm(nrow(ppt_tbl),sd=.4),
-             rnorm(nrow(ppt_tbl),-0.0009,sd=.0001)
-  )
-  #linear decrease for everyone at slightly different rates
-  
-  
-  q <- as.data.table(covar%*%t(b))
-  setnames(q,as.character(sort(ppt_tbl$ppt_id)))
-  q[, time:=x_all]
-  out <- melt(data=q,
-              id.vars="time",
-              measure.vars=as.character(sort(ppt_tbl$ppt_id)),
-              variable.name="ppt_id",
-              value.name="pm25"
-  )
-  out[, ppt_id:=as.integer(ppt_id)]
-  setcolorder(out,c("ppt_id","time","pm25"))
-  setkey(out, ppt_id,time,pm25)
-      #return(out[])
- 
-  mm <- frollmean(q[, as.character(sort(ppt_tbl$ppt_id)),with=FALSE],365*n_years)
-  out_avg <- data.table(time=rep(x_all,length(ppt_tbl$ppt_id)),
-             ppt_id=rep(sort(ppt_tbl$ppt_id),each=length(x_all)),
-             pm25_avg=unlist(mm))
-  
-  out_final <- out[out_avg,on=c("ppt_id","time"),nomatch=NULL]
-  out_final[]
-}
-
-```
-
-
-Visualize some explosure plots. each color is a ppt. each pane is a different set of exposure functions in a different set of ppts
+Visualize some explosure plots. each color is a ppt. each panel is a different set of exposure functions in a different set of ppts
 ```{r,fig.height = 8, fig.width=8, fig.align='center'}
 
   par(mfrow=c(2,2))
@@ -333,8 +160,7 @@ for(j in 1:3){
   par(mfrow=c(1,1))
 
 ```
-I probably could have started out with a smoother trend and called that a two-year average! The daily
-predictions really serve no purpose in this simulation. But they look nice!
+I probably could have started out with a smoother trend and called that a two-year average! The daily predictions really serve no purpose in this simulation. But they look nice!
 
 
 

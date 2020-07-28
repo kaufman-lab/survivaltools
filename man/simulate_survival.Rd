@@ -10,7 +10,8 @@ simulate_survival(
   x_covar_names = NULL,
   z_tv_covar_names = NULL,
   covar_coefs = NULL,
-  tv_covar_coefs = NULL
+  tv_covar_coefs = NULL,
+  return_hazard = FALSE
 )
 }
 \arguments{
@@ -29,6 +30,9 @@ time-variant covariate columns; these must be of class numeric.}
 \item{covar_coefs}{A vector of coefficients (same length as x_covar_names)}
 
 \item{tv_covar_coefs}{A vector of coefficients (same length as z_tv_covar_names)}
+
+\item{return_hazard}{If TRUE, the return data.table will contain an attribute which itself is a data.table
+containing ppt-specific hazard at each time-poin.}
 }
 \description{
 this is a summary

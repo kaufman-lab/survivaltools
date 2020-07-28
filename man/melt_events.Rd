@@ -17,8 +17,8 @@ The character vectors must be in the same order.  Each element of the list repre
 columns that will be turned into a single column in the return.
 (such that measure.vars[\link{1}]\link{1} corresponds to measure.vars[\link{2}]\link{1},measure.vars[\link{1}]\link{2}
 corresponds to measure.vars[\link{2}]\link{2},etc).
-Typically, one element of measure.vars is a character vector of follow-up dates and
-one element of measure.vars is a character vector of binary event indicators.}
+Typically, one element of measure.vars is a character vector corresponding to column names of follow-up dates/days and
+and another  element of measure.vars is a character vector corresponding to column names of binary event indicators.}
 
 \item{value.name}{A character vector the length of measure.vars designating desired the column names
 in the return. Each element of value.name corresponds to the column that will be created from
