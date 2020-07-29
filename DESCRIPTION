@@ -1,5 +1,5 @@
 Package: survivaltools
-Title: What the Package Does (One Line, Title Case)
+Title: Tools to Deal with Time-Varying Survival Data
 Version: 0.0.0.9000
 Authors@R: 
     person(given = "Michael",
@@ -7,7 +7,7 @@ Authors@R:
            role = c("aut", "cre"),
            email = "myoung3@uw.edu")
 Description: What the package does (one paragraph).
-License: use_gpl3_license()
+License: GPL-3
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
@@ -17,5 +17,10 @@ Depends:
 Suggests: 
     testthat,
     knitr,
-    rmarkdown
+    rmarkdown,
+    ggplot2
 VignetteBuilder: knitr
+Imports: 
+    survival,
+    stats,
+    splines

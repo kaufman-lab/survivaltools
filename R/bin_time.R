@@ -1,4 +1,3 @@
-
 #'Convert Dates/integers to the end of a specified interval
 #'
 #'\code{bin_time} codes values in x, according to which of the specified intervals they falls into,
@@ -20,12 +19,10 @@
 #'  (ie outside the span of y). When FALSE, elements of the return vector corresponding to
 #'  values of x not in intervals of y are returned as NA.
 #' @return A vector of the same class as columns of y corresponding to elements of x
-#'
 #' @examples
 #'  bin_time(x=c(1L,6L,2L,14L),y=data.frame(seq(1L,21L,by=5L),seq(5L,25L,by=5L)))
+#' @import data.table
 #' @export
-
-
 bin_time <-function(x,y,snapto="end",nonmatcherror=TRUE){
 
   stopifnot(class(x)[1]%in%c("integer","Date","IDate"))
@@ -40,7 +37,7 @@ bin_time <-function(x,y,snapto="end",nonmatcherror=TRUE){
   y <- as.data.table(y)
 
 
-  if(nrow(y)!=nrow(na.omit(y))){
+  if(nrow(y)!=nrow(stats::na.omit(y))){
     stop("intervals in y cannot be missing")
   }
 
@@ -69,7 +66,8 @@ bin_time <-function(x,y,snapto="end",nonmatcherror=TRUE){
     stop("intervals in y must be non-overlapping")
   }
 
-  if(y[, list(V1=shift(y1,type="lead")-1,y2=y2)][, na.omit(.SD)][,identical(V1,y2)]){
+  if(!y[, list(V1=shift(y1,type="lead")-1,y2=y2)][, stats::na.omit(.SD)][,
+      identical(as.numeric(V1),as.numeric(y2))]){
     stop("intervals in y must be comprehensive")
   }
 

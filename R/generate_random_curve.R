@@ -1,224 +1,236 @@
+#' Create a function from a set of basis functions and corresponding coefficients
 #'
-#' to increase the flexibility of the curve, you need to specify higher n_points and degee.
+#' A function which returns a function which itself will return the linear combination of the provided
+#' basis functions and coefficients. Coefficients may be vectors,
+#'  allowing for id-specific linear combinations of those basis functions.
+#'
+#' Each set of coefficients may be a vector. The ordering of each coefficients
+#' must correspond to each other. ie, if `coefs=list(c(1,2), c(3,4))` then 1 and 3 are taken
+#' to be the coefficients for the first and second basis functions respectively for the first id and
+#' 2 and 4 are taken to be the coefficients for the first and second basis functions respectively for the second id.
+#' If any element of coefs has length greater than 1, then id must be specified because the return
+#' function will have an id argument (which specifies which set of coefficients to use).
+#'
+#'@param basis_functions A list of functions of x that return a vector the same length as x
+#'@param coefs A list of coefficients, the same length as basis_functions.
+#' Each element of this list is either a vector of length-1 or the length of id.
+#'@param id NULL, or a unique vector identifying participant numbers.
+#'@return if id is NULL: a function of x which returns a data.table with columns "x" and "value".
+#'if id is non-null, a function of both x and id which returns a data.table containing a row for every
+#'combination of x and id,  with columns "x", "id",and "value".
+#'@examples
+#'set.seed(20)
+#'f0 <- function(x){rep(1L,length(x))}
+#'f1 <- function(x){x}
+#'f2 <- generate_random_spline(c(1,100),20, stats::rnorm(n,sd=40),degree=10)
+#'f3 <- generate_random_spline(c(1,100),20, stats::rnorm(n,sd=40),degree=10)
+#'
+#'#fixed coefficients
+#'g <- generate_curve_function(list(f0,f1,f2,f3),coefs=list(30,5,1,1))
+#'dt <- g(1:100)
+#'plot(1:100,dt$value, type="l")
+#'
+#'#random coefficients
+#'ids <- 1:10
+#'g1 <- generate_curve_function(list(f0,f1,f2,f3),
+#'                              coefs=list(stats::rnorm(length(ids), mean=30),
+#'                                         stats::rnorm(length(ids),mean=5),
+#'                                         stats::rnorm(length(ids)),
+#'                                         stats::rnorm(length(ids))
+#'                              ),
+#'                              id=1:length(ids))
+#'dt1 <- g1(1:100,ids)
+#'plot(1,1,xlim=c(1,100),ylim=range(dt1$value),type="n")
+#'sapply(ids,function(i){lines(dt1[id==i,x],dt1[id==i,value],col=i)})
+#'
+#'
+#' x <- 1:(365*20)
+#' x_range <- range(x)
+#' shape <- 7.5
+#' avg_daily_hazard=0.000003
+#' curve(dgamma(x,shape=shape,scale=avg_daily_hazard/shape),from=0, to=0.0001)
+#'
+#' z <- generate_curve_function(
+#'   basis_functions=list(
+#'     function(x){x-mean(x_range)},
+#'     generate_random_spline(x_range,n_points=20,
+#'                            stats::rgamma(n,shape=shape,scale=avg_daily_hazard/shape),
+#'                            degree=10)
+#'   ),
+#'   coefs=list(-5e-10,1)
+#' )
+#' plot(x,z(x)$value,type="l")
 #'
 #'
 #'
 #'
-#' The random splines will have an expected value of 0 at all points. The returned curve will also
-#' have an expected value of <intercept> at all points, unless you specify linear_slope to be non-zero,
-#' in which case the curve will have an expected value of zero only at the midpoint of the domain (since
-#' linear_slope is the slope of centered x)
-#'
-#'@param ppts NULL, or a unique vector identifying participant numbers.
-#'@param x_domain A length-2 numeric vector specifying the inclusive interval over which the
-#' curve should be defined.
-#'@param random_trends Number of random temporal trends to generate
-#'(in addition to the always-present constant and linear terms). Specify 0 for no random trends.
-#'@param intercept The coefficient(s) for the constant trend. A vector either length of ppts or length-1.
-#'@param linear_slope The coefficient(s) for the linear trend of centered x.
-#' A vector either length of ppts or length-1.
-#'@param random_spline_coefs Coefficient(s) for the random splines. A list with the length of the number of
-#'random trends specified via random_trends.
-#' Each element of this list can either be length-1 or the length of ppts.
-#'@param n_points For the random splines, the number of points (not including end points) that will be
-#'used to generate the spline.
-#' Can be either length-1 (the same number of points will be used for all random_splines) or
-#' the length of the number of random trends specified via, specifying that each random spline will be generated
-#'  from a different number of points.
-#'@random_points_expr For the random splines, an expression of n used to generate
-#' the y value of the random points. See examples
-#'@param degree The degee for the random splines.
-#' Passed to bs function.
-#' @examples
-#'
-#' z(ppts,x=1:(365*20))
+#' ppts <- 1:10
 #'
 #' par(mfrow=c(3,2))
-#' for(j in 1:3){
-#'   z <- generate_random_curve_function(ppts,x_domain=c(1,365.25*20),random_trends=2,
-#'                                       intercept=rnorm(length(ppts),mean=18),
-#'                                       linear_slope=rnorm(length(ppts),-0.0009,sd=0.0001),
-#'                                       random_spline_coefs=list(
-#'                                         rnorm(length(ppts),sd=.4),
-#'                                         rnorm(length(ppts),sd=.4)
-#'                                       ),
-#'                                       n_points=365,
-#'                                       random_points_expr=rnorm(n,mean=0,sd=20),
-#'                                       degree=30)
-#'   x <- 1:(365*20)
-#'   exposures <- z(ppts,x=x)
-#'   for(i in 1:length(ppts)){
-#'     if(i==1){
-#'       exposures[J(ppts[i]), plot(x=x,y=pred,type="l",col=i,ylim=c(0,30)),on="ppt"]
-#'     }
-#'     else{
-#'       exposures[J(ppts[i]), lines(x=x,y=pred,col=i,ylim=c(0,30)),on="ppt"]
-#'     }
-#'   }
+#' for(j in 1:6){
+#'   z2 <- generate_curve_function(
+#'     basis_functions=list(
+#'       function(x){rep(1L,length(x))},
+#'       function(x){x-mean(x_range)},
+#'       generate_random_spline(x_range,n_points=365, stats::rnorm(n,sd=20),degree=30),
+#'       generate_random_spline(x_range,n_points=365, stats::rnorm(n,sd=20),degree=30)
+#'     ),
+#'     coefs=list(
+#'       stats::rnorm(length(ppts),mean=18),
+#'       stats::rnorm(length(ppts),-0.0009,sd=0.0001),
+#'       stats::rnorm(length(ppts),sd=.4),
+#'       stats::rnorm(length(ppts),sd=.4)
+#'     ),
+#'     id=ppts
+#'   )
 #'
+#' exposures <- z2(ppts[2:6],x=x)
+#' exposures_ppts <- unique(exposures$id)
+#'
+#' plot(1,1,type="n",xlim=x_range,ylim=range(exposures$value))
+#' for(i in 1:length(exposures_ppts))
+#'   exposures[J(exposures_ppts[i]), lines(x=x,y=value,col=i,ylim=c(0,30)),on="id"]
 #' }
 #' par(mfrow=c(1,1))
 #'
 #'
 #'
-#' max(5, floor(365*20)*.05)
-#' shape <- 7.5
-#' avg_daily_hazard=0.000003
-#' curve(dgamma(x,shape=shape,scale=avg_daily_hazard/shape),from=0, to=0.0001)
-#'
-#' z2 <- generate_random_curve_function(ppts=NULL,x_domain=c(1,20),random_trends=1,
-#'                                      intercept=0,
-#'                                      linear_slope=-0.00000009,
-#'                                      random_spline_coefs=1L,
-#'                                      n_points=20,
-#'                                      random_points_expr=rgamma(n,shape=shape,scale=avg_daily_hazard/shape),
-#'                                      degree=10)
-#'
-#' z2(x=1:4)
 #'
 #'
-#'@return if ppts is NULL, a function of x. if ppts is non-null, a function of ppts and x.
-#' Either way the return function will return a data.table with columns: x, pred, and possibly ppts
+#'@export
 
-generate_random_curve_function <- function(ppts, x_domain,
-                                           random_trends,
-                                           intercept=0L,
-                                           linear_slope=0L,
-                                           random_spline_coefs=NULL,
-                                           n_points=NULL,
-                                           random_points_expr=NULL,
-                                           degree=NULL){
-  sexpr <- substitute(random_points_expr)
-  stopifnot(uniqueN(ppts)==length(ppts))
-  stopifnot(is.numeric(random_trends))
-  n_random_spline_trends <- random_trends
+generate_curve_function <- function(basis_functions, coefs,id=NULL){
+  stopifnot(is.list(basis_functions))
+  stopifnot(is.list(coefs))
 
-  if(n_random_spline_trends ==0){
-    if(!is.null(n_points)) warning("n_points argument specifies the number of points
-                                   used to generate the trends corresponding to random splines. Since
-                                   random_trends==0, no random splines are generated and n_points is therefore ignored")
-  }
-
-  if(n_random_spline_trends > 0){
-    if(is.null(n_points)) stop("n_points cannot be null when specifying random splines via random_trends ")
-    if(is.null(degree)) stop("degree cannot be null when specifying radom splines via random_trends ")
-    if(is.null(random_spline_coefs)) stop("random_spline_coefs cannot be null when specifying random splines via random_trends ")
-  }
-
-  stopifnot(length(n_points) %in% c(1L,n_random_spline_trends))
-
-  if(!is.null(ppts)){
-    stopifnot(length(intercept) %in% c(1L, length(ppts)))
-    stopifnot(length(linear_slope) %in% c(1L, length(ppts)))
-    if(!is.null(random_spline_coefs)){
-      stopifnot(all(sapply(random_spline_coefs, length) %in% c(1L, length(ppts))))
-    }
-  }else{
-    stopifnot(length(intercept) %in% c(1L))
-    stopifnot(length(linear_slope) %in% c(1L))
-    if(!is.null(random_spline_coefs)){
-
-      stopifnot(all(sapply(random_spline_coefs, length) %in% c(1L)))
-    }
-  }
+  stopifnot(all(sapply(basis_functions, is.function)))
+  stopifnot(identical(length(basis_functions),length(coefs)))
 
 
+  coef_lengths <- sapply(coefs,length)
 
-  n <- n_points+2L #add 2 for the end points
+ if(any(coef_lengths)!=1L){
+   if(!all(coef_lengths %in% c(1L, max(coef_lengths)))){
+     stop("elements of coef which have length greater than 1 must all be the same length")
+   }
+ }
 
-  if(n_random_spline_trends>0L){
-    #for each random spline, generate a set of y values according to random_points_expr
-    y_list <- replicate(n_random_spline_trends,
-              expr=eval(sexpr, list(n=n)),
-              simplify = FALSE)
-    if(is.null(y_list[[1]])){stop("random_points_expr is returning NULL")}
+ n_id <- max(coef_lengths)
 
-    #for each random spline, generate a set of x values
-    x_list <- replicate(n_random_spline_trends,
-              expr=c(x_domain,runif(n_points,min=x_domain[1],max=x_domain[2])),
-              simplify=FALSE
-              )
-    #there's a chance you could end up with duplicate x points, but this won't cause an error.
+ if(n_id>1L & is.null(id)){ stop("id cannot be NULL when elements of coefs have length greater than 1")
+ }
 
-    bs_models <- mapply(x_list,y_list, FUN=function(x,y){
-      lm(y~splines::bs(x,degree=degree))
-    },SIMPLIFY = FALSE)
+ if(!is.null(id)){
+   if(length(id)!=n_id){
+     stop("length(id) must be the same as max(sapply(coefs,length))")
+   }
+ }
 
-  }
+ id_copy <- id
 
 
-  x_midpoint <- mean(x_domain)
+ if(n_id==1L){
+   out <- function(x){
+     stopifnot(all(!is.na(x)))
 
+     #evaluate all the basis functions at x
+     X <- sapply(basis_functions,function(f){f(x)})
 
+     ##error check X
+     if(is.list(X)){
+       X_length <- sapply(X, length)
+       if(!all(X_length[1]==X_length)){
+         stop("basis functions are returning elements of different length")
+       }else{
+         stop("basis functions are being turned into a list by sapply for some reason.
+              are basis functions all returning a vector?")
+       }
+     }
 
+     coefs <- unlist(coefs) #coefs are all length-1L if n_id==1L
+     data.table(x=x,value=as.vector(X%*% coefs))
+   }
 
-  if(is.null(ppts)){
-    out <- function(x){
-      stopifnot(all(!is.na(x)))
-      stopifnot(all(between(x,x_domain[1],x_domain[2])))
-      if(n_random_spline_trends>0L){
-        spline_preds <- lapply(bs_models, predict,newdata=data.frame(x=x))
-      }else{
-        spline_preds <- NULL
-      }
+ }else{
+   out <- function(x,id){
 
+     stopifnot(all(!is.na(id)))
+     stopifnot(all(!is.na(x)))
 
+     match_id <- match(id,id_copy)
 
-      X <- do.call("cbind",c(list(1L,x-x_midpoint),spline_preds))
-      b <- c(intercept, linear_slope, unlist(random_spline_coefs))
-      data.table(x=x,pred=X%*%b)
-    }
-  }else{
-    out <- function(ppt,x){
-      stopifnot(all(!is.na(ppt)))
-      stopifnot(all(!is.na(x)))
-      if(identical(ppt,ppts)){
-        all_ppts <- TRUE
-      }else{
-        all_ppts <- FALSE
-        match_ppt <- match(ppt,ppts)
-        stopifnot(all(!is.na(match_ppt)))
-      }
+     #evaluate all the basis functions at x
+     X <- sapply(basis_functions,function(f){f(x)})
 
-      stopifnot(all(between(x,x_domain[1],x_domain[2])))
-      if(n_random_spline_trends>0L){
-        spline_preds <- lapply(bs_models, predict,newdata=data.frame(x=x))
-      }else{
-        spline_preds <- NULL
-      }
+     ##error check X:
+     if(is.list(X)){
+       X_length <- sapply(X, length)
+       if(!all(X_length[1]==X_length)){
+         stop("basis functions are returning elements of different length")
+       }else{
+         stop("basis functions are being turned into a list by sapply for some reason.
+              are basis functions all returning a vector?")
+       }
+     }
 
-      #X a matrix of covars that are a function of time
-      #B is a matrix of coefficients that vary by ppt
-      X <- do.call("cbind",c(list(1L,x-x_midpoint),spline_preds))
-      B <- do.call("cbind", c(list(intercept), list(linear_slope), random_spline_coefs))
-      if(!all_ppts) B <- B[match_ppt,]
+     #X a matrix of covars that are a function of time
+     #B is a matrix of coefficients that vary id
 
-      data.table(x=rep(x,times=length(ppt)),
-                 ppt=rep(ppt,each=length(x)),
-                 pred=as.vector(X%*%t(B))
-                 )
+     B <- do.call("rbind", coefs)
+     B <- B[,match_id]
 
-    }
-  }
-  out
+     data.table(x=rep(x,times=length(id)),
+                id=rep(id,each=length(x)),
+                value=as.vector(X%*%B)
+     )
 
+   }
+ }
+ out
 }
 
 
-ppts <- paste0("pptid_",3:10)
-z <- generate_random_curve_function(ppts,x_domain=c(1,365.25*20),random_trends=2,
-                               intercept=rnorm(length(ppts),mean=18),
-                               linear_slope=rnorm(length(ppts),-0.0009,sd=0.0001),
-                               random_spline_coefs=list(
-                                 rnorm(length(ppts),sd=.4),
-                                 rnorm(length(ppts),sd=.4)
-                               ),
-                               n_points=365,
-                               random_points_expr=rnorm(n,mean=0,sd=20),
-                               degree=30)
 
 
 
+#' Create a random curve using bs splines
+#'
+#' Generate a random set of x,y points then fit a spline through them.
+#'
+#'@param x_range A length-2 numeric vector specifying the inclusive interval over which the
+#' curve should be defined.
+#'@param n_points For the random splines, the number of points (not including end points) that will be
+#'used to generate the spline.
+#'@param random_points_expr For the random splines, an expression of n used to generate
+#' the y value of the random points. See examples
+#'@param degree The degree for the random splines. Passed to bs function.
+#'@return a function of x
+#'@examples
+#' set.seed(20)
+#' f <- generate_random_spline(c(1,100),10, stats::rnorm(n),degree=4)
+#' plot(1:100, f(1:100),type="l")
+#'@export
+generate_random_spline <- function(x_range, n_points, random_points_expr, degree){
+    stopifnot(is.numeric(x_range))
+    stopifnot(length(x_range)==2L)
+    stopifnot(is.numeric(n_points))
+    stopifnot(length(n_points)==1L)
 
+    sexpr <- substitute(random_points_expr)
+    n <- n_points+2L #add 2 for the end points
 
+    #generate a set of y values according to random_points_expr
+    y_points <- eval(sexpr, list(n=n))
 
+    if(is.null(y_points)){stop("random_points_expr is returning NULL")}
+    #generate a set of x values
+    x <- c(x_range,stats::runif(n_points,min=x_range[1],max=x_range[2]))
+    #there's a chance you could end up with duplicate x points, but this won't cause an error.
+    m <- stats::lm(y_points~splines::bs(x,degree=degree))
+
+    rm(x) #not necessary due to scoping, but it makes the code clearer.
+    function(x){
+      stats::predict(m, newdata=list(x=x))
+    }
+
+}

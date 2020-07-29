@@ -1,15 +1,15 @@
 
 
-
+#' prep function
+#'
 #' @param x is a data.table with the following columns:
 #' - id: a unique identifier for participant
 #' - age: age (in years, rounded down ) at baseline.
 #' - time: days since baseline
 #' - event: 0/1
-#' -
 #' @export
 
-function(x){
+prep <- function(x){
 
   x <- as.data.table(x)
 

@@ -60,7 +60,7 @@ We could use a constant hazard in our simulations, but to do more realistic simu
 I've written an R function which generates a baseline hazards function (using a spline fit to randomly generated points):
 
 
-```{r}
+```{r,eval=FALSE}
 ppt_tbl <- create_ppt_table(1000)
 hazard_table1 <- create_hazard_table(ppt_tbl)
 plot(hazard_table1[ppt_id==1,]$time,hazard_table1[ppt_id==1,]$baseline_hazard,type="l",col=i,ylim=c(2e-6,3.5e-6))
@@ -171,7 +171,7 @@ I probably could have started out with a smoother trend and called that a two-ye
 
 functions to summarize the simulation:
 
-```{r}
+```{r,eval=FALSE}
 #turn nested list of coefficients into data.table 
 extract_simulation_table <- function(results_list){
   
@@ -209,7 +209,7 @@ summarize_simulation_table <- function(results_table){
 
 Start with a simple simulation with calendar time as the baseline time-scale.
 No pm2.5 exposure, but include an effect of aging and an effect of smoking.
-```{r}
+```{r,eval=FALSE}
 
 
 #stratified_smoking_coef 
@@ -256,7 +256,7 @@ stopCluster(cl)
 ```
 
 
-```{r}
+```{r,eval=FALSE}
 summarize_simulation_table(extract_simulation_table(results))
 ```
 
@@ -269,7 +269,7 @@ for age at least with this.
 
 
 Now include the pm25 values as a time-varying variable.
-```{r}
+```{r,eval=FALSE}
 
   library(data.table)
   setDTthreads(1)
@@ -306,7 +306,7 @@ Now include the pm25 values as a time-varying variable.
 
 
 Now include the pm25 values as a time-varying variable.
-```{r}
+```{r,eval=FALSE}
 
 #age_stratified_pm25_coef <- vector()
 #age_adjusted_pm25_coef <- vector()
@@ -372,7 +372,7 @@ Note that the above code tests the "split_by_event_times" function I wrote to tu
 
 compare:
 
-```{r}
+```{r,eval=FALSE}
 q_split
 q
 ```
@@ -383,7 +383,7 @@ If you're stratifying by a variable, you only need to split *within* rows of the
 
 Here I compare splitting the dataset into andersen gill ignoring strata (ie cutting at every event date)
 vs splitting the data into andersen gill format *within strata* (ie only cutting at events within the same strata)
-```{r}
+```{r,eval=FALSE}
 
 
 #fullsplit_age_stratified_coefs 
@@ -482,7 +482,7 @@ stratify by that point.
 
 This is an important point because of the following:
 
-```{r}
+```{r,eval=FALSE}
 nrow(q_fullsplit)
 nrow(q_stratumsplit)
 ```
@@ -515,7 +515,7 @@ e.g. diet or other environmental factors).
 The goal of this is to compare stratifying by age at enrollment with age at day of event.
 
 
-```{r}
+```{r,eval=FALSE}
 
 ##it's not possible to split events within a strata defined by time-varying age
  #because calculating time-varying age depends on knowing the splits
@@ -675,7 +675,7 @@ https://cran.r-project.org/web/packages/meta/meta.pdf
 
 
 
-```{r}
+```{r,eval=FALSE}
 
 ##it's not possible to split events within a strata defined by time-varying age
  #because calculating time-varying age depends on knowing the splits
@@ -795,7 +795,7 @@ It doesn't matter whether you stratify for baseline age or time-varying age, all
 
 
 
-```{r}
+```{r,eval=FALSE}
 ###effect of smoking, aging, time, and pm25
  #pm2.5 also declines with time.
  #hazard spline varies randomly over time

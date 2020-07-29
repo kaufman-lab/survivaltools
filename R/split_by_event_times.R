@@ -63,8 +63,6 @@
 #' @param event_indicator character vector designating a column name in x that is of 0/1 indicator variable for events
 #' @return returns an unkeyed data.table with columns of x plus two columns: start and end. the event_indicator
 #' column will be equal to 1 only in a ppt's final interval (and only if that ppt had an event)
-#' @examples
-#
 #' @export
 
 

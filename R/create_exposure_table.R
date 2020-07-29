@@ -61,7 +61,7 @@ create_exposure_table <- function(ppt_tbl,slope=-0.0009,slope_sd=.0001, n_years=
   )
   #linear decrease for everyone at slightly different rates
 
-  browser()
+
   q <- as.data.table(covar%*%t(b))
   setnames(q,as.character(sort(ppt_tbl$ppt_id)))
   q[, time:=x_all]
