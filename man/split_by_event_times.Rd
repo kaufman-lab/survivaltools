@@ -26,9 +26,6 @@ the second element of interval_vars designates the start time for follow-up (ie 
 \item{group_vars}{optionally,  groups_vars designates column name(s) in x in which the splitting algorithm will be repeated separately.
 (e.g. if you have different outcomes you can do this computation separately for each outcome with a single function
 call assuming that your dataset is formatted "long" with respect to outcome type (each particpant has one row per outcome type))}
-
-\item{y}{A two-column data.frame where the first column is the start IDate (or integer) of each period and the second
-column is the ending IDate (or integer) of each period. The intervals must be non-overlapping and comprehensive.}
 }
 \value{
 returns an unkeyed data.table with columns of x plus two columns: start and end. the event_indicator

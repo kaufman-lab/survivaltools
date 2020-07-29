@@ -2,8 +2,7 @@
 % Please edit documentation in R/melt_events.R
 \name{melt_events}
 \alias{melt_events}
-\title{Melt multiple type columns to long format
-Reshape to long a data.table with survival data for multiple event types.}
+\title{Melt multiple type columns to long format}
 \usage{
 melt_events(x, id, measure.vars, value.name, type)
 }
@@ -15,8 +14,8 @@ melt_events(x, id, measure.vars, value.name, type)
 \item{measure.vars}{A list where each element is a length-n character vector corresponding to column names in x.
 The character vectors must be in the same order.  Each element of the list represents a set of
 columns that will be turned into a single column in the return.
-(such that measure.vars[\link{1}]\link{1} corresponds to measure.vars[\link{2}]\link{1},measure.vars[\link{1}]\link{2}
-corresponds to measure.vars[\link{2}]\link{2},etc).
+(such that measure.vars[[1]][1] corresponds to measure.vars[[2]][1],measure.vars[[1]][2]
+corresponds to measure.vars[[2]][2],etc).
 Typically, one element of measure.vars is a character vector corresponding to column names of follow-up dates/days and
 and another  element of measure.vars is a character vector corresponding to column names of binary event indicators.}
 
@@ -25,8 +24,8 @@ in the return. Each element of value.name corresponds to the column that will be
 each element of measure.vars}
 
 \item{type}{A vector the length of each element of measure.vars denoting the type of event.
-ie, type\link{1} denotes the type of event of measure.vars[\link{1}]\link{1},measure.vars[\link{2}]\link{1}, etc and
-type\link{2} denotes the type of event of measure.vars[\link{1}]\link{2},measure.vars[\link{2}]\link{2}, etc.
+ie, type[1] denotes the type of event of measure.vars[[1]][1],measure.vars[[2]][1], etc and
+type[2] denotes the type of event of measure.vars[[1]][2],measure.vars[[2]][2], etc.
 type will become an indicator column in the return}
 }
 \value{
@@ -35,7 +34,6 @@ then merge it back in to the result. The same goes for any other variables in x 
 that don't need to be melted.
 }
 \description{
-Melt multiple type columns to long format
 Reshape to long a data.table with survival data for multiple event types.
 }
 \examples{

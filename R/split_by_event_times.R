@@ -51,8 +51,6 @@
 #'
 #'
 #' @param x is a data.table
-#' @param y A two-column data.frame where the first column is the start IDate (or integer) of each period and the second
-#' column is the ending IDate (or integer) of each period. The intervals must be non-overlapping and comprehensive.
 #' @param interval_vars length 2 character vector designating two column names in x:
 #'  the first element of interval_vars designates the start time for follow-up (if using study time, create a column of zeros)
 #'  the second element of interval_vars designates the start time for follow-up (ie censor or event date)
