@@ -82,3 +82,4 @@ bin_time <-function(x,y,snapto="end",nonmatcherror=TRUE){
   }
  out$out_value
 }
+

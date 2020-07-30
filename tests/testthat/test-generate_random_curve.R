@@ -1,13 +1,13 @@
 test_that("generate_random_spline", {
 
   set.seed(20)
-  f <- generate_random_spline(c(-3.2,25),n_points=365, rnorm(n,sd=20),degree=30)
+  f <- generate_random_spline(c(-3.2,25),rnorm(365,sd=20),degree=30)
   a <- f(seq(-3.2,25,by=.08))
 
   set.seed(20)
-  y <- rnorm(367,sd=20)
-  x <- c(c(-3.2,25),runif(365,min=-3.2,max=25))
-  b<- predict(lm(y~splines::bs(x,degree=30)),newdata=list(x=seq(-3.2,25,by=.08)))
+  y <- rnorm(365,sd=20)
+  x <- c(c(-3.2,25),runif(363,min=-3.2,max=25))
+  b <- predict(lm(y~splines::bs(x,degree=30)),newdata=list(x=seq(-3.2,25,by=.08)))
 
   expect_equal(a,b)
 })
@@ -24,8 +24,8 @@ test_that("generate_curve_function", {
 
   f1 <- function(x){rep(1L,length(x))}
   f2 <- function(x){x-mean(x_range)}
-  f3 <- generate_random_spline(x_range,n_points=365, rnorm(n,sd=20),degree=30)
-  f4 <- generate_random_spline(x_range,n_points=365, rnorm(n,sd=20),degree=30)
+  f3 <- generate_random_spline(x_range,rnorm(365,sd=20),degree=30)
+  f4 <- generate_random_spline(x_range,rnorm(365,sd=20),degree=30)
 
 
   coef1 <- rnorm(length(ppts),mean=18)

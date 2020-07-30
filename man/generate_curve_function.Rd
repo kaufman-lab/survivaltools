@@ -36,8 +36,8 @@ function will have an id argument (which specifies which set of coefficients to 
 set.seed(20)
 f0 <- function(x){rep(1L,length(x))}
 f1 <- function(x){x}
-f2 <- generate_random_spline(c(1,100),20, stats::rnorm(n,sd=40),degree=10)
-f3 <- generate_random_spline(c(1,100),20, stats::rnorm(n,sd=40),degree=10)
+f2 <- generate_random_spline(c(1,100),stats::rnorm(20,sd=40),degree=10)
+f3 <- generate_random_spline(c(1,100),stats::rnorm(20,sd=40),degree=10)
 
 #fixed coefficients
 g <- generate_curve_function(list(f0,f1,f2,f3),coefs=list(30,5,1,1))
@@ -47,65 +47,65 @@ plot(1:100,dt$value, type="l")
 #random coefficients
 ids <- 1:10
 g1 <- generate_curve_function(list(f0,f1,f2,f3),
-                             coefs=list(stats::rnorm(length(ids), mean=30),
-                                        stats::rnorm(length(ids),mean=5),
-                                        stats::rnorm(length(ids)),
-                                        stats::rnorm(length(ids))
-                             ),
-                             id=1:length(ids))
+                              coefs=list(stats::rnorm(length(ids), mean=30),
+                                         stats::rnorm(length(ids),mean=5),
+                                         stats::rnorm(length(ids)),
+                                         stats::rnorm(length(ids))
+                              ),
+                              id=1:length(ids))
 dt1 <- g1(1:100,ids)
 plot(1,1,xlim=c(1,100),ylim=range(dt1$value),type="n")
 sapply(ids,function(i){lines(dt1[id==i,x],dt1[id==i,value],col=i)})
 
 
-x <- 1:(365*20)
-x_range <- range(x)
-shape <- 7.5
-avg_daily_hazard=0.000003
-curve(dgamma(x,shape=shape,scale=avg_daily_hazard/shape),from=0, to=0.0001)
+ x <- 1:(365*20)
+ x_range <- range(x)
+ shape <- 7.5
+ avg_daily_hazard=0.000003
+ curve(dgamma(x,shape=shape,scale=avg_daily_hazard/shape),from=0, to=0.0001)
 
-z <- generate_curve_function(
-  basis_functions=list(
-    function(x){x-mean(x_range)},
-    generate_random_spline(x_range,n_points=20,
-                           stats::rgamma(n,shape=shape,scale=avg_daily_hazard/shape),
-                           degree=10)
-  ),
-  coefs=list(-5e-10,1)
-)
-plot(x,z(x)$value,type="l")
-
-
+ z <- generate_curve_function(
+   basis_functions=list(
+     function(x){x-mean(x_range)},
+     generate_random_spline(x_range,
+                            stats::rgamma(20,shape=shape,scale=avg_daily_hazard/shape),
+                            degree=10)
+   ),
+   coefs=list(-5e-10,1)
+ )
+ plot(x,z(x)$value,type="l")
 
 
-ppts <- 1:10
 
-par(mfrow=c(3,2))
-for(j in 1:6){
-  z2 <- generate_curve_function(
-    basis_functions=list(
-      function(x){rep(1L,length(x))},
-      function(x){x-mean(x_range)},
-      generate_random_spline(x_range,n_points=365, stats::rnorm(n,sd=20),degree=30),
-      generate_random_spline(x_range,n_points=365, stats::rnorm(n,sd=20),degree=30)
-    ),
-    coefs=list(
-      stats::rnorm(length(ppts),mean=18),
-      stats::rnorm(length(ppts),-0.0009,sd=0.0001),
-      stats::rnorm(length(ppts),sd=.4),
-      stats::rnorm(length(ppts),sd=.4)
-    ),
-    id=ppts
-  )
 
-exposures <- z2(ppts[2:6],x=x)
-exposures_ppts <- unique(exposures$id)
+ ppts <- 1:10
 
-plot(1,1,type="n",xlim=x_range,ylim=range(exposures$value))
-for(i in 1:length(exposures_ppts))
-  exposures[J(exposures_ppts[i]), lines(x=x,y=value,col=i,ylim=c(0,30)),on="id"]
-}
-par(mfrow=c(1,1))
+ par(mfrow=c(3,2))
+ for(j in 1:6){
+   z2 <- generate_curve_function(
+     basis_functions=list(
+       function(x){rep(1L,length(x))},
+       function(x){x-mean(x_range)},
+       generate_random_spline(x_range, stats::rnorm(365,sd=20),degree=30),
+       generate_random_spline(x_range,stats::rnorm(365,sd=20),degree=30)
+     ),
+     coefs=list(
+       stats::rnorm(length(ppts),mean=18),
+       stats::rnorm(length(ppts),-0.0009,sd=0.0001),
+       stats::rnorm(length(ppts),sd=.4),
+       stats::rnorm(length(ppts),sd=.4)
+     ),
+     id=ppts
+   )
+
+ exposures <- z2(ppts[2:6],x=x)
+ exposures_ppts <- unique(exposures$id)
+
+ plot(1,1,type="n",xlim=x_range,ylim=range(exposures$value))
+ for(i in 1:length(exposures_ppts))
+   exposures[J(exposures_ppts[i]), lines(x=x,y=value,col=i,ylim=c(0,30)),on="id"]
+ }
+ par(mfrow=c(1,1))
 
 
 

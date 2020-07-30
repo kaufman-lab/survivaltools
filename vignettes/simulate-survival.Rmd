@@ -23,6 +23,8 @@ library(parallel)
 library(survival)
 library(ggplot2)
 n_cores <- max(1L,detectCores()-1)
+
+set.seed(20)
 ```
 
 
@@ -30,15 +32,15 @@ n_cores <- max(1L,detectCores()-1)
 
 ### generating participant data
 
-create_ppt_table is a simple function to randomly generate age at enrollment, date of study entry, and the last possible day of follow-up for a given number of participants:
+generate_ppt_table is a simple function to randomly generate age at enrollment, date of study entry, and the last possible day of follow-up for a given number of participants:
 ```{r}
- create_ppt_table(1000)
+ generate_ppt_table(1000)
 ```
 Note that the units are always in days since "1970-01-01". It's just easier to work with integers than dates. 
 
 Every time this function is called, it generates a new set of participant data: 
 ```{r}
- create_ppt_table(1000)
+ generate_ppt_table(1000)
 ```
 
 
@@ -61,25 +63,25 @@ I've written an R function which generates a baseline hazards function (using a 
 
 
 ```{r,eval=FALSE}
-ppt_tbl <- create_ppt_table(1000)
-hazard_table1 <- create_hazard_table(ppt_tbl)
-plot(hazard_table1[ppt_id==1,]$time,hazard_table1[ppt_id==1,]$baseline_hazard,type="l",col=i,ylim=c(2e-6,3.5e-6))
+ppt_tbl <- generate_ppt_table(1000)
+hazard_table1 <- generate_hazard_table(ppt_tbl)
+plot(hazard_table1[ppt_id==1,]$time,hazard_table1[ppt_id==1,]$baseline_hazard,type="l",ylim=c(2e-6,3.5e-6))
 ```
 
 Some details about the specifics of the above code: 
-Note that `create_hazard_table` function generates the same baseline hazard for function for everyone, but is stored such that every participant has their own set of hazard values for every day. (This formulation of the hazard function/dataset is a good format to input into simulation code because this format would generalize to a situation where different subjects have different baseline hazards). 
+Note that `generate_hazard_table` function generates the same baseline hazard for function for everyone, but is stored such that every participant has their own set of hazard values for every day. (This formulation of the hazard function/dataset is a good format to input into simulation code because this format would generalize to a situation where different subjects have different baseline hazards). 
 
 
 
-`create_hazard_table` will generate a new set of baseline hazards every time it's called. Here we plot several different baseline hazards:
+`generate_hazard_table` will generate a new set of baseline hazards every time it's called. Here we plot several different baseline hazards:
 
 ```{r}
 
 par(mfrow=c(1,1))
   
   for(i in 1:6){
-    ppt_tbl <- create_ppt_table(1000)
-    hazard_table1 <- create_hazard_table(ppt_tbl)
+    ppt_tbl <- generate_ppt_table(1000)
+    hazard_table1 <- generate_hazard_table(ppt_tbl)
     if(i==1){
       hazard_table1[J(i), plot(time,baseline_hazard,type="l",col=i,ylim=c(2e-6,3.5e-6)),on="ppt_id"]
     } else{
@@ -88,80 +90,32 @@ par(mfrow=c(1,1))
   }
 ```
 
-Note that these hazard occur over a very tight range around ~0.000003 (the default for create_hazard_table). This corresponds to a reasonable hazard (or conditional probability) when the x axis is units of days.
+Note that these hazard occur over a very tight range around ~0.000003 (the default for generate_hazard_table) with a strong linear slope. This corresponds to a reasonable hazard (or conditional probability) when the x axis is units of days.
 
 ### time-varying variables:  exposure
 
-In addition to generate participant recruitment timing information and the baseline hazard function, we also need a function to generate time-varying covariates such as PM2.5.
+In addition to generating participant recruitment timing information and the baseline hazard function, we also need a function to generate time-varying covariates such as PM2.5.
 
-First the function generates four temporal trends:
-- a constant term 
-- a linear term.
-- two temporal trends are random curves (splines fit to random points).
+glossing over the details, the result is a set of participant-specific exposure curves that have a linear trend over time and are built on the same basis functions with random intercepts.
 
-By default the trends have a negative slope on average (ie air pollution decreases over time).
+Visualize some explosure plots. each color is a ppt. each panel is a different set of exposure functions in a different set of ppts. Note that these are supposed to symbolize 2-year averages so there's not that much variabililty.
 
-Visualize some explosure plots. each color is a ppt. each panel is a different set of exposure functions in a different set of ppts
 ```{r,fig.height = 8, fig.width=8, fig.align='center'}
 
   par(mfrow=c(2,2))
 
 for(j in 1:4){
-  ppt_tbl <- create_ppt_table(1000)
-  exposures <- create_exposure_table(ppt_tbl)
+  ppt_tbl <- generate_ppt_table(1000)
+  exposure_tbl <- generate_exposure_table(ppt_tbl,dofoverlaps=FALSE)
+  exposure_tbl <- exposure_tbl[between(time,min(ppt_tbl$t_start),max(ppt_tbl$t_exit))]
+  exposure_tbl[, plot(1,1,type="n",xlim=range(time)+c(-1,1)*diff(range(time))*.1,ylim=c(8,22))]
   for(i in 1:10){
-    
-    
-    if(i==1){
-      exposures[J(i), plot(x=time,y=pm25,type="l",col=i,ylim=c(0,30)),on="ppt_id"]
-    } 
-    else{
-      exposures[J(i), lines(x=time,y=pm25,col=i,ylim=c(0,30)),on="ppt_id"]
-    }
+    exposure_tbl[J(i), lines(x=time,y=exposure_2yravg,col=i),on="ppt_id"]
   }
 }
   par(mfrow=c(1,1))
 
 ```
-
-
-The above plots just visualized the raw trend, now visualize the 2 year average as well as the raw trend.
-2 year average is what will actually be used as the determinant of risk.
-
-In the following plot, 
-each row is a new randomly generated cohort with a new set of basis functions. 
-The left column of plots is the raw trend, the right column of plots is the average. Each color is a ppt within each row's cohort.
-```{r,fig.height = 12, fig.width=8, fig.align='center'}
-
-  par(mfrow=c(3,2))
-
-for(j in 1:3){
-  ppt_tbl <- create_ppt_table(1000)
-  exposures <- create_exposure_table(ppt_tbl)
-  for(i in 1:10){
-    if(i==1){
-      exposures[J(i), plot(x=time,y=pm25,type="l",col=i,ylim=c(0,30)),on="ppt_id"]
-    } 
-    else{
-      exposures[J(i), lines(x=time,y=pm25,col=i,ylim=c(0,30)),on="ppt_id"]
-    }
-  }
-  
-  for(i in 1:10){
-    if(i==1){
-      exposures[J(i), plot(x=time,y=pm25_avg,type="l",col=i,ylim=c(0,30)),on="ppt_id"]
-    } 
-    else{
-      exposures[J(i), lines(x=time,y=pm25_avg,col=i,ylim=c(0,30)),on="ppt_id"]
-    }
-  }
-  
-}
-  par(mfrow=c(1,1))
-
-```
-I probably could have started out with a smoother trend and called that a two-year average! The daily predictions really serve no purpose in this simulation. But they look nice!
-
 
 
 
@@ -169,84 +123,43 @@ I probably could have started out with a smoother trend and called that a two-ye
 
 
 
-functions to summarize the simulation:
-
-```{r,eval=FALSE}
-#turn nested list of coefficients into data.table 
-extract_simulation_table <- function(results_list){
-  
-  
-  #results[[i]] is a named list of matrices
-    #take results[[i]], turn each matrix to a data.table,
-      #and assign each name of results[[i]] as a column to its respective data.table
-  temp <- lapply(results_list,function(x){
-    n <- names(x)
-    l <- lapply(x, as.data.table,keep.rownames = TRUE)
-    i <- 1
-    lapply(l, function(z){z[,type:=n[i]];i <<-i+1;z })
-    rbindlist(l)
-  })
-  
-  ##temp is a list of data.tables, rbind them into a single data.table
-  
-  rbindlist(temp)
-  
-}
-
-
-summarize_simulation_table <- function(results_table){
-  out <- results_table[, list(mean_coef=mean(coef),
-                       mean_se=mean(`se(coef)`),
-                       sd_coef=sd(coef)
-                       ),
-                keyby=c("rn","type")]
-  out[]
-  
-}
-```
-
-
-
 Start with a simple simulation with calendar time as the baseline time-scale.
-No pm2.5 exposure, but include an effect of aging and an effect of smoking.
+No pm2.5 exposure, but include an effect of aging.
+We shouldn't expect to need to adjust for age here because even though age determines
+risk it's not associated with smoking status.
 ```{r,eval=FALSE}
 
 
 #stratified_smoking_coef 
 #unstratified_smoking_coef
 cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("create_ppt_table","create_hazard_table","create_exposure_table"))
 results <- parLapply(cl, 1:200,function(i){
   library(data.table)
   setDTthreads(1)
   library(survivaltools)
   library(survival)
 
-  ppt_tbl1 <- create_ppt_table(1000)
+  ppt_tbl1 <- generate_ppt_table(2000)
   ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=.5)]
-  hazard_table1 <- create_hazard_table(ppt_tbl1)
+  hazard_table1 <- generate_hazard_table(ppt_tbl1)
 
   q <- simulate_survival(x=ppt_tbl1,
                          z=hazard_table1,
                          x_covar_names="smoking",
-                         z_tv_covar_names = "age_since65_tv",
-                         covar_coefs=2,
-                         tv_covar_coefs=1/10000
+                         z_tv_covar_names = c("age_since65_tv"),
+                         covar_coefs=1.2,
+                         tv_covar_coefs=c(1/10000)
  )
 
-  #create age bins
-  bins <- q[,list(lower=as.integer(seq(min(baseline_age),max(baseline_age)+366,by=365)))]
-  bins[, upper:=shift(lower,type="lead")-1L]
-  bins <- na.omit(bins)
-
-  q[,baseline_age_c:=bin_time(as.integer(baseline_age),bins,snapto = "count")]
-  stratified_smoking_coef <-
-    coef(summary(coxph(Surv(start,end,event)~strata(baseline_age_c)+smoking,data=q)))
-  unstratified_smoking_coef <-
-    coef(summary(coxph(Surv(start,end,event)~smoking,data=q)))
   
-  out <- list(stratified_smoking_coef=stratified_smoking_coef,
-              unstratified_smoking_coef=unstratified_smoking_coef)
+  q[,baseline_age_c:=floor(baseline_age/365.25)]
+  
+  
+  out <- list(
+    extract_coef_table(coxph(Surv(start,end,event)~strata(baseline_age_c)+smoking,data=q)),
+    extract_coef_table(coxph(Surv(start,end,event)~baseline_age_c+smoking,data=q)),
+    extract_coef_table(coxph(Surv(start,end,event)~smoking,data=q))
+  )
   
   attr(out, "n_events") <- q[, sum(event)]
   out
@@ -257,49 +170,48 @@ stopCluster(cl)
 
 
 ```{r,eval=FALSE}
-summarize_simulation_table(extract_simulation_table(results))
+summary(sapply(results, attr, "n_events"))
 ```
 
-Even though aging has an effect on hazard, it doesn't seem necessary to stratify or even adjust
-for age at least with this.
-
-
-## Survival simulation: time-varying exposure. is it proportional?
-
-
-
-Now include the pm25 values as a time-varying variable.
 ```{r,eval=FALSE}
-
-  library(data.table)
-  setDTthreads(1)
-  library(survivaltools)
-  library(survival)
-  ppt_tbl1  <- create_ppt_table(1000)
-  ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=.5)]
-  tv_table <- create_hazard_table(ppt_tbl1)
-  exposure_table1 <- create_exposure_table(ppt_tbl1)
-  
-  #merge in exposures to the hazard table.
-  tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
-  
-  
-  q <- simulate_survival(x=ppt_tbl1,
-                         z=tv_table,
-                         x_covar_names="smoking",
-                         z_tv_covar_names = c("age_since65_tv","pm25_avg"),
-                         covar_coefs=c(2),
-                         tv_covar_coefs=c(1/10000,0.01),
-                         return_hazard=TRUE
- )
-
-  setnames(q, c("start","end"),c("start0","end0"))
-  
-  tv_table[attr(q, "hazard"),hazard:=hazard, on=c("ppt_id","time")]
-  
-  ggplot(data=tv_table[ppt_id %in% sample(unique(ppt_id),10),list(time, hazard/baseline_hazard),by=c("ppt_id")], aes(x=time,y=V2,group=ppt_id)) + geom_line()
-  
+summarize_simulation_table(rbindlist(unlist(results,recursive=FALSE)))
 ```
+
+As expected, results are uniased regardless of whether we stratify, adjust, or ignore age.
+
+
+## Survival simulation with a time-varying variable
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ## time-varying exposure
@@ -313,16 +225,16 @@ Now include the pm25 values as a time-varying variable.
 #age_unadjusted_pm25_coef <- vector()
 
 cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("create_ppt_table","create_hazard_table","create_exposure_table"))
+clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
 results1 <- parLapply(cl, 1:39,function(i){
   library(data.table)
   setDTthreads(1)
   library(survivaltools)
   library(survival)
-  ppt_tbl1  <- create_ppt_table(1000)
+  ppt_tbl1  <- generate_ppt_table(1000)
   ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=.5)]
-  tv_table <- create_hazard_table(ppt_tbl1)
-  exposure_table1 <- create_exposure_table(ppt_tbl1)
+  tv_table <- generate_hazard_table(ppt_tbl1)
+  exposure_table1 <- generate_exposure_table(ppt_tbl1)
   
   #merge in exposures to the hazard table.
   tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
@@ -395,16 +307,16 @@ vs splitting the data into andersen gill format *within strata* (ie only cutting
 #"fullsplit" means interval cuts happen at all event times in the dataset, regardless of the strata.
 
 cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("create_ppt_table","create_hazard_table","create_exposure_table"))
+clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
 results2 <- parLapply(cl, 1:39,function(i){
   library(data.table)
   setDTthreads(1)
   library(survivaltools)
   library(survival)
-  ppt_tbl1  <- create_ppt_table(1000)
+  ppt_tbl1  <- generate_ppt_table(1000)
   ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=.5)]
-  tv_table <- create_hazard_table(ppt_tbl1)
-  exposure_table1 <- create_exposure_table(ppt_tbl1)
+  tv_table <- generate_hazard_table(ppt_tbl1)
+  exposure_table1 <- generate_exposure_table(ppt_tbl1)
   
   tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
   
@@ -523,14 +435,14 @@ The goal of this is to compare stratifying by age at enrollment with age at day 
 #so stratumsplit can't be mixed with stratification by time-varying age
 
 cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("create_ppt_table","create_hazard_table","create_exposure_table"))
+clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
 results3 <- parLapply(cl, 1:39,function(i){
   library(data.table)
   setDTthreads(1)
   library(survivaltools)
   library(survival)
 
-  ppt_tbl1 <- create_ppt_table(1000) #increase sample size from previous examples
+  ppt_tbl1 <- generate_ppt_table(1000) #increase sample size from previous examples
   ppt_tbl1[, dob:=t_start-baseline_age]
   ppt_tbl1[, centered_dob:=dob-mean(dob)]
   ppt_tbl1[, centered_t_start:=t_start-mean(t_start)]
@@ -540,9 +452,9 @@ results3 <- parLapply(cl, 1:39,function(i){
   #ppt_tbl1[, plot(smoking_probability~centered_dob)]
   #ppt_tbl1[, plot(smoking_probability~centered_t_start)]
   ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=smoking_probability)]
-  tv_table <- create_hazard_table(ppt_tbl1)
+  tv_table <- generate_hazard_table(ppt_tbl1)
   
-  exposure_table1 <- create_exposure_table(ppt_tbl1)
+  exposure_table1 <- generate_exposure_table(ppt_tbl1)
   
   tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
   
@@ -683,14 +595,14 @@ https://cran.r-project.org/web/packages/meta/meta.pdf
 #so stratumsplit can't be mixed with stratification by time-varying age
 
 cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("create_ppt_table","create_hazard_table","create_exposure_table"))
+clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
 results3 <- parLapply(cl, 1:39,function(i){
   library(data.table)
   setDTthreads(1)
   library(survivaltools)
   library(survival)
 
-  ppt_tbl1 <- create_ppt_table(1000) #increase sample size from previous examples
+  ppt_tbl1 <- generate_ppt_table(1000) #increase sample size from previous examples
   ppt_tbl1[, dob:=t_start-baseline_age]
   ppt_tbl1[, centered_dob:=dob-mean(dob)]
   ppt_tbl1[, centered_t_start:=t_start-mean(t_start)]
@@ -700,9 +612,9 @@ results3 <- parLapply(cl, 1:39,function(i){
   #ppt_tbl1[, plot(smoking_probability~centered_dob)]
   #ppt_tbl1[, plot(smoking_probability~centered_t_start)]
   ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=smoking_probability)]
-  tv_table <- create_hazard_table(ppt_tbl1)
+  tv_table <- generate_hazard_table(ppt_tbl1)
   
-  exposure_table1 <- create_exposure_table(ppt_tbl1)
+  exposure_table1 <- generate_exposure_table(ppt_tbl1)
   
   tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
   
@@ -803,14 +715,14 @@ It doesn't matter whether you stratify for baseline age or time-varying age, all
 
 
 cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("create_ppt_table","create_hazard_table","create_exposure_table"))
+clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
 results3 <- parLapply(cl, 1:39,function(i){
   library(data.table)
   setDTthreads(1)
   library(survivaltools)
   library(survival)
 
-  ppt_tbl1 <- create_ppt_table(1000) #increase sample size from previous examples
+  ppt_tbl1 <- generate_ppt_table(1000) #increase sample size from previous examples
   ppt_tbl1[, dob:=t_start-baseline_age]
   ppt_tbl1[, centered_dob:=dob-mean(dob)]
   ppt_tbl1[, centered_t_start:=t_start-mean(t_start)]
@@ -819,9 +731,9 @@ results3 <- parLapply(cl, 1:39,function(i){
   ppt_tbl1[smoking_probability>1,smoking_probability:=1]
 
   ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=smoking_probability)]
-  tv_table <- create_hazard_table(ppt_tbl1)
+  tv_table <- generate_hazard_table(ppt_tbl1)
   
-  exposure_table1 <- create_exposure_table(ppt_tbl1)
+  exposure_table1 <- generate_exposure_table(ppt_tbl1)
   
   tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
   
@@ -954,3 +866,13 @@ There are three potential issues to be aware of for stratification:
  - this residual confounding can be eliminated by averaging exposure to the bin rather than the exact day of event. this means there's no left-over temporal variation in exposure after controlluming for calendar time strata. However, this leads to measurement error which attenuates to the null.
  
 - It may be possible to use finer calendar time bins (say, a month) while using a baseline starting age that is less granular. Already starting with baseline age in years (rounded down) means that the loss of 
+
+
+
+## ref
+understanding non-proportional hazards:
+"Taking x2 = x1 + 1, the hazard ratio reduces to HR = exp(β) and corresponds to the effect of one unit increase in the explanatory variable X on the risk of event. Since β = log(HR), β is referred as the log hazard ratio. Although the hazard rate hx(t) is allowed to vary over time, the hazard ratio HR is constant; this is the assumption of proportional hazards. If the HR is greater than 1 (β > 0), the event risk is increased for subjects with covariate value x2 compared to subjects with covariate value x1, while a HR lower than 1 (β < 0) indicates a decreased risk. When the HR is not constant over time, the variable is said to have a time-varying effect; for example, the effect of a treatment can be strong immediately after treatment but fades with time. This should not be confused with a time-varying covariate, which is a variable whose value is not fixed over time, such as smoking status. Indeed, a person can be a non-smoker, then a smoker, then a non-smoker. Note however, that a variable may be both time-varying and have an effect that changes over time.
+
+In a Cox PH model, the HR is estimated by considering each time t at which an event occurs. When estimating the overall HR over the complete follow-up period, the same weights are given to the very early HR which affect almost all individuals and to very late HR affecting only the very few individuals still at risk. The HR is thus averaged over the event times. In the case of proportional hazards, the overall HR is not affected by this weighting procedure. If, on the other hand, the HR changes over time, that is, the hazard rates are not proportional, then equal weighting may result in a non-representative HR, and may produce biased results [22]. It should be noted that the HR is averaged over the event times rather than over the follow-up time. It is unchanged if the time scale is changed without disturbing the ordering of events.
+"
+https://bmcmedresmethodol.biomedcentral.com/articles/10.1186/1471-2288-10-20

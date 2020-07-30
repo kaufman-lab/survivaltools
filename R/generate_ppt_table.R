@@ -18,7 +18,7 @@
 #' @return A data.table with columns ppt_id, time, pm25, and pm25_avg (where pm25_avg is just the
 #' rolling average of pm25 where the size of the rolling window is defined by n_years)
 #' @examples
-#'create_ppt_table(10,
+#' generate_ppt_table(10,
 #'                 baseline_age=as.integer(floor(55*365.25 + rbinom(n,size=30, prob=.3)*365.25)),
 #'                 t_start=pmin(
 #'                   as.integer(floor(as.numeric(
@@ -31,7 +31,7 @@
 #')
 #'
 #' @export
-create_ppt_table <- function(n,
+generate_ppt_table <- function(n,
                              baseline_age_expr=as.integer(floor(
                                55*365.25 + rbinom(n,size=30, prob=.3)*365.25)),
                              t_start=pmin(
@@ -51,5 +51,6 @@ create_ppt_table <- function(n,
     ,
     t_exit=eval(substitute(t_exit),envir=list(n=n), enclos = parent.frame())
   )
+  setattr(out, "sorted",c("ppt_id","t_start","t_exit"))
   out[]
 }

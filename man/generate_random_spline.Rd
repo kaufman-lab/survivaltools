@@ -4,17 +4,14 @@
 \alias{generate_random_spline}
 \title{Create a random curve using bs splines}
 \usage{
-generate_random_spline(x_range, n_points, random_points_expr, degree)
+generate_random_spline(x_range, random_points, degree)
 }
 \arguments{
 \item{x_range}{A length-2 numeric vector specifying the inclusive interval over which the
 curve should be defined.}
 
-\item{n_points}{For the random splines, the number of points (not including end points) that will be
-used to generate the spline.}
-
-\item{random_points_expr}{For the random splines, an expression of n used to generate
-the y value of the random points. See examples}
+\item{random_points}{For the random splines, a vector of y values that will be used to generate the
+spline. The length of random_points will determine the number of points used to generate the spline.}
 
 \item{degree}{The degree for the random splines. Passed to bs function.}
 }
@@ -24,8 +21,21 @@ a function of x
 \description{
 Generate a random set of x,y points then fit a spline through them.
 }
+\details{
+the length of random_points determines the number of points used
+to fit the spline and therefore may limit the flexibility of the spline
+even when degree is increased.
+
+Note that two of these points are allocated as end points (ie the values of x_range)
+
+bs will helpfully return a warning message when providing x values outside of the domain.
+
+The fitted/predicted values of the spline near the extent of
+the input data can be quite variable.
+This can be addressed by specifying a wider x_range than you plan on making predictions for.
+}
 \examples{
 set.seed(20)
-f <- generate_random_spline(c(1,100),10, stats::rnorm(n),degree=4)
+f <- generate_random_spline(c(1,100),stats::rnorm(10),degree=4)
 plot(1:100, f(1:100),type="l")
 }
