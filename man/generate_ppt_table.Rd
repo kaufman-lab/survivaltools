@@ -38,6 +38,8 @@ Default enrollment date is generated between 2001-01-01 and 2017-01-01.
 Default t_exit (last possible day of enrollment) is 2017-01-01.
 }
 \examples{
+generate_ppt_table(10)
+
 generate_ppt_table(10,
                 baseline_age=as.integer(floor(55*365.25 + rbinom(n,size=30, prob=.3)*365.25)),
                 t_start=pmin(

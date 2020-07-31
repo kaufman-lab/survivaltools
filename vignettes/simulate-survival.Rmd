@@ -44,6 +44,15 @@ Every time this function is called, it generates a new set of participant data:
 ```
 
 
+This is a typical format for representing survival data (one row per participant), but for simulations we need to expand this dataset such that there's a row for every time point in every participant:
+
+```{r}
+ppt_tbl <- generate_ppt_table(1000)
+ppt_tbl_expanded <- expand_ppt_table(ppt_tbl)
+```
+The result is fully crossed between all possible time points and every participant, but not every participant is actually at risk at all of those time points. the at_risk column indicates whether `time` is in a participant's interval `(t_start,t_exit]` (notice the open interval on the left. this is the convention with cox models that a participant is not at risk on day of entry)
+
+
 ### the baseline hazard
 A quick reminder of how baseline hazard works for a cox model:
 
@@ -62,32 +71,20 @@ We could use a constant hazard in our simulations, but to do more realistic simu
 I've written an R function which generates a baseline hazards function (using a spline fit to randomly generated points):
 
 
-```{r,eval=FALSE}
-ppt_tbl <- generate_ppt_table(1000)
-hazard_table1 <- generate_hazard_table(ppt_tbl)
-plot(hazard_table1[ppt_id==1,]$time,hazard_table1[ppt_id==1,]$baseline_hazard,type="l",ylim=c(2e-6,3.5e-6))
+```{r} 
+times <- ppt_tbl_expanded[ppt_id==1,time] #extract unique times
+baseline_hazards <- generate_baseline_hazard(times)
+plot(times,baseline_hazards,type="l",ylim=c(2e-6,3.5e-6))
 ```
 
-Some details about the specifics of the above code: 
-Note that `generate_hazard_table` function generates the same baseline hazard for function for everyone, but is stored such that every participant has their own set of hazard values for every day. (This formulation of the hazard function/dataset is a good format to input into simulation code because this format would generalize to a situation where different subjects have different baseline hazards). 
+The hazard function decreases over time by design. This makes it easy to induce
+correlations with secular trends in confounding time-varying.
 
-
-
-`generate_hazard_table` will generate a new set of baseline hazards every time it's called. Here we plot several different baseline hazards:
+`generate_baseline_hazard` will generate a new set of baseline hazards every time it's called. Here we plot several different baseline hazards:
 
 ```{r}
-
-par(mfrow=c(1,1))
-  
-  for(i in 1:6){
-    ppt_tbl <- generate_ppt_table(1000)
-    hazard_table1 <- generate_hazard_table(ppt_tbl)
-    if(i==1){
-      hazard_table1[J(i), plot(time,baseline_hazard,type="l",col=i,ylim=c(2e-6,3.5e-6)),on="ppt_id"]
-    } else{
-      hazard_table1[J(i), lines(time,baseline_hazard,type="l",col=i,ylim=c(2e-6,3.5e-6)),on="ppt_id"]
-    }
-  }
+hazard_matrix <- replicate(6,generate_baseline_hazard(times))
+matplot(times,hazard_matrix,col=1:ncol(hazard_matrix),type="l",lty=1)
 ```
 
 Note that these hazard occur over a very tight range around ~0.000003 (the default for generate_hazard_table) with a strong linear slope. This corresponds to a reasonable hazard (or conditional probability) when the x axis is units of days.
@@ -98,23 +95,16 @@ In addition to generating participant recruitment timing information and the bas
 
 glossing over the details, the result is a set of participant-specific exposure curves that have a linear trend over time and are built on the same basis functions with random intercepts.
 
-Visualize some explosure plots. each color is a ppt. each panel is a different set of exposure functions in a different set of ppts. Note that these are supposed to symbolize 2-year averages so there's not that much variabililty.
+In the following plot, each color is a ppt and each panel is a different set of randomly generated exposure functions.
 
 ```{r,fig.height = 8, fig.width=8, fig.align='center'}
-
-  par(mfrow=c(2,2))
+par(mfrow=c(2,2))
 
 for(j in 1:4){
-  ppt_tbl <- generate_ppt_table(1000)
-  exposure_tbl <- generate_exposure_table(ppt_tbl,dofoverlaps=FALSE)
-  exposure_tbl <- exposure_tbl[between(time,min(ppt_tbl$t_start),max(ppt_tbl$t_exit))]
-  exposure_tbl[, plot(1,1,type="n",xlim=range(time)+c(-1,1)*diff(range(time))*.1,ylim=c(8,22))]
-  for(i in 1:10){
-    exposure_tbl[J(i), lines(x=time,y=exposure_2yravg,col=i),on="ppt_id"]
-  }
+  exposures <- generate_exposure_matrix(times,1:10,degree=10)
+  matplot(times,exposures,col=1:ncol(exposures),type="l",lty=1)
 }
-  par(mfrow=c(1,1))
-
+par(mfrow=c(1,1))
 ```
 
 
@@ -124,7 +114,7 @@ for(j in 1:4){
 
 
 Start with a simple simulation with calendar time as the baseline time-scale.
-No pm2.5 exposure, but include an effect of aging.
+No pm2.5 exposure, but include an effect of aging and an effect of smoking.
 We shouldn't expect to need to adjust for age here because even though age determines
 risk it's not associated with smoking status.
 ```{r,eval=FALSE}
@@ -141,24 +131,24 @@ results <- parLapply(cl, 1:200,function(i){
 
   ppt_tbl1 <- generate_ppt_table(2000)
   ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=.5)]
-  hazard_table1 <- generate_hazard_table(ppt_tbl1)
+  x <- prep_tv_dataset(ppt_tbl1,include_exposure = FALSE)
+  
 
-  q <- simulate_survival(x=ppt_tbl1,
-                         z=hazard_table1,
-                         x_covar_names="smoking",
-                         z_tv_covar_names = c("age_since65_tv"),
-                         covar_coefs=1.2,
-                         tv_covar_coefs=c(1/10000)
+  q <- simulate_survival(x=x,
+                         covar_names=c("smoking","age_since65_tv"),
+                         covar_coefs=c(1.2,1/10000)
  )
 
+  q <- q[ppt_tbl1,on=c("ppt_id","t_start")]
+  
   
   q[,baseline_age_c:=floor(baseline_age/365.25)]
   
   
   out <- list(
-    extract_coef_table(coxph(Surv(start,end,event)~strata(baseline_age_c)+smoking,data=q)),
-    extract_coef_table(coxph(Surv(start,end,event)~baseline_age_c+smoking,data=q)),
-    extract_coef_table(coxph(Surv(start,end,event)~smoking,data=q))
+    extract_coef_table(coxph(Surv(t_start,t_end,event)~strata(baseline_age_c)+smoking,data=q)),
+    extract_coef_table(coxph(Surv(t_start,t_end,event)~baseline_age_c+smoking,data=q)),
+    extract_coef_table(coxph(Surv(t_start,t_end,event)~smoking,data=q))
   )
   
   attr(out, "n_events") <- q[, sum(event)]

@@ -41,19 +41,19 @@ test_that("generate_curve_function", {
     id=ppts
   )
 
-  exposures <- z2(ppts[2:6],x=x)
+  ppt_subset <- ppts[2:6]
+  exposures <- z2(ppt_subset,x=x)
 
-  exposures_ppts <- ppts[2:6]
 
   v <- list()
-  for(i in 1:length(exposures_ppts)){
-    current_ppt <- ppts %in% exposures_ppts[i]
-    v[[i]] <- data.table(x=x,id=exposures_ppts[i],value=
-                           coef1[current_ppt]*f1(x) + coef2[current_ppt]*f2(x) +
-                           coef3[current_ppt]*f3(x) + coef4[current_ppt]*f4(x))
+  for(i in 1:length(ppt_subset)){
+    current_ppt <- ppts %in% ppt_subset[i]
+    v[[i]] <- coef1[current_ppt]*f1(x) + coef2[current_ppt]*f2(x) +
+                           coef3[current_ppt]*f3(x) + coef4[current_ppt]*f4(x)
   }
 
-  vv <- rbindlist(v)
+  vv <- do.call("cbind",v)
 
-  expect_true(all.equal(vv, exposures))
+
+  expect_true(all.equal(as.vector(vv), as.vector(exposures)))
 })

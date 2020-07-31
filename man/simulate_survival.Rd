@@ -6,33 +6,26 @@
 \usage{
 simulate_survival(
   x,
-  z,
-  x_covar_names = NULL,
-  z_tv_covar_names = NULL,
+  covar_names = NULL,
   covar_coefs = NULL,
-  tv_covar_coefs = NULL,
   return_hazard = FALSE
 )
 }
 \arguments{
-\item{x}{a data.table containing at a mininum a unique identifier column named ppt_id, an integer column
-representing time of study entry named t_start, and an integer vector representing time of study exit named t_exit.
-May also contain time-invariant covariates columns; these must be of class numeric (factors not implemented).}
+\item{x}{a data.table containing at a mininum a unique identifier column named ppt_id, an integer time column
+named time, a positive numeric column named baseline_hazard. Participants are assumed to be at risk if a time/participant combination exists as a row.
+Within groups defined by participants, the values of time (or number of rows in each group) need not be the same.
+May also contain covariates.}
 
-\item{z}{a data.table containing a unique identifier column named id, an integer column representing time
-named time, and a numeric column named baseline_hazard containing non-negative values. z may also contain
-time-variant covariate columns; these must be of class numeric.}
+\item{covar_names}{a vector of column names in x corresponding to numeric covariates}
 
-\item{x_covar_names}{a vector of column names in x corresponding to numeric covariates}
-
-\item{z_tv_covar_names}{a vector of column names in x corresponding to numeric time-varying covariates}
-
-\item{covar_coefs}{A vector of coefficients (same length as x_covar_names)}
-
-\item{tv_covar_coefs}{A vector of coefficients (same length as z_tv_covar_names)}
+\item{covar_coefs}{A vector of coefficients (same length as covar_names)}
 
 \item{return_hazard}{If TRUE, the return data.table will contain an attribute which itself is a data.table
-containing ppt-specific hazard at each time-poin.}
+containing ppt-specific hazard at each time-point.}
+}
+\value{
+a data.table
 }
 \description{
 this is a summary
@@ -40,7 +33,4 @@ this is a summary
 \details{
 note that the t_exit column in x represents the last day on which a ppt could be observed. typically
 the end of follow-up, and may be the same day for everyone.
-
-z must contain a row for every discrete time point in a ppt_id's range (as specified by t_start and t_exit in x).
-keeping in mind that t_start, t_exit is open on the left and closed on the right as is typical for survival data.
 }

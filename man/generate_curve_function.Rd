@@ -15,9 +15,9 @@ Each element of this list is either a vector of length-1 or the length of id.}
 \item{id}{NULL, or a unique vector identifying participant numbers.}
 }
 \value{
-if id is NULL: a function of x which returns a data.table with columns "x" and "value".
-if id is non-null, a function of both x and id which returns a data.table containing a row for every
-combination of x and id,  with columns "x", "id",and "value".
+if id is NULL: a function of x which returns a vector indexed by x
+if id is not NULL, a function of x and id (arguments in that order) which returns an m by n matrix
+where m is length(x) and n is length(id).
 }
 \description{
 A function which returns a function which itself will return the linear combination of the provided
@@ -41,8 +41,7 @@ f3 <- generate_random_spline(c(1,100),stats::rnorm(20,sd=40),degree=10)
 
 #fixed coefficients
 g <- generate_curve_function(list(f0,f1,f2,f3),coefs=list(30,5,1,1))
-dt <- g(1:100)
-plot(1:100,dt$value, type="l")
+plot(1:100,g(1:100), type="l")
 
 #random coefficients
 ids <- 1:10
@@ -53,9 +52,9 @@ g1 <- generate_curve_function(list(f0,f1,f2,f3),
                                          stats::rnorm(length(ids))
                               ),
                               id=1:length(ids))
-dt1 <- g1(1:100,ids)
-plot(1,1,xlim=c(1,100),ylim=range(dt1$value),type="n")
-sapply(ids,function(i){lines(dt1[id==i,x],dt1[id==i,value],col=i)})
+m1 <- g1(1:100,ids)
+matplot(1:100,m1,col=1:ncol(m1),type="l",lty=1)
+
 
 
  x <- 1:(365*20)
@@ -73,7 +72,7 @@ sapply(ids,function(i){lines(dt1[id==i,x],dt1[id==i,value],col=i)})
    ),
    coefs=list(-5e-10,1)
  )
- plot(x,z(x)$value,type="l")
+ plot(x,z(x),type="l")
 
 
 
@@ -98,13 +97,11 @@ sapply(ids,function(i){lines(dt1[id==i,x],dt1[id==i,value],col=i)})
      id=ppts
    )
 
- exposures <- z2(ppts[2:6],x=x)
- exposures_ppts <- unique(exposures$id)
+ ppt_subset <-ppts[2:6]
+ m2 <- z2(x=x,ppt_subset)
 
- plot(1,1,type="n",xlim=x_range,ylim=range(exposures$value))
- for(i in 1:length(exposures_ppts))
-   exposures[J(exposures_ppts[i]), lines(x=x,y=value,col=i,ylim=c(0,30)),on="id"]
- }
+ matplot(x,m2,col=1:ncol(m2),type="l",lty=1)
+}
  par(mfrow=c(1,1))
 
 
