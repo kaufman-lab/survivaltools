@@ -179,13 +179,13 @@ Add a time-varying covariate as
 ```{r,eval=FALSE}
 
 cl <- makeCluster(getOption("cl.cores",n_cores ))
-results <- parLapply(cl, 1:1000,function(i){
+results <- parLapply(cl, 1:2000,function(i){
   library(data.table)
   setDTthreads(1)
   library(survivaltools)
   library(survival)
 
-  ppt_tbl1 <- generate_ppt_table(20)
+  ppt_tbl1 <- generate_ppt_table(2000)
   x <- prep_tv_dataset(ppt_tbl1)
   
 
