@@ -167,13 +167,72 @@ summary(sapply(results, attr, "n_events"))
 summarize_simulation_table(rbindlist(unlist(results,recursive=FALSE)))
 ```
 
-As expected, results are uniased regardless of whether we stratify, adjust, or ignore age.
+As expected, results are unbiased regardless of whether we stratify, adjust, or ignore age.
 
 
 ## Survival simulation with a time-varying variable
 
+Add a time-varying covariate as
 
 
+
+```{r,eval=FALSE}
+
+cl <- makeCluster(getOption("cl.cores",n_cores ))
+results <- parLapply(cl, 1:1000,function(i){
+  library(data.table)
+  setDTthreads(1)
+  library(survivaltools)
+  library(survival)
+
+  ppt_tbl1 <- generate_ppt_table(20)
+  x <- prep_tv_dataset(ppt_tbl1)
+  
+
+  q <- simulate_survival(x=x,
+                         covar_names=c("age_since65_tv","exposure"),
+                         covar_coefs=c(1/10000,0.01)
+ )
+
+  q <- q[ppt_tbl1,on=c("ppt_id","t_start")]
+  
+  
+  q[,baseline_age_c:=floor(baseline_age/365.25)]
+  q[,baseline_year:=1970L+floor(t_start/365.25)]
+  
+  q_split <- split_by_event_times(q,interval_vars=c("t_start","t_end"),id_var="ppt_id",event_indicator="event")
+  
+  q_split[x, exposure:=exposure, on=c("ppt_id",end="time")]
+  
+
+  
+  formulas <- list(Surv(t_start,t_end,event)~strata(baseline_age_c)+exposure,
+       Surv(t_start,t_end,event)~baseline_age_c+exposure,
+       Surv(t_start,t_end,event)~baseline_age_c*baseline_year+exposure,
+       Surv(t_start,t_end,event)~baseline_age+exposure,
+       Surv(t_start,t_end,event)~baseline_age*baseline_year+exposure,
+       Surv(t_start,t_end,event)~exposure
+       )
+  
+  out <- lapply(formulas, function(x){
+    extract_coef_table(coxph(x,data=q_split),RHS=as.character(x)[3])
+  })
+  
+  attr(out, "n_events") <- q[, sum(event)]
+  out
+  
+})
+stopCluster(cl)
+```
+
+
+```{r,eval=FALSE}
+summary(sapply(results, attr, "n_events"))
+```
+
+```{r,eval=FALSE}
+summarize_simulation_table(rbindlist(unlist(results,recursive=FALSE)))
+```
 
 
 

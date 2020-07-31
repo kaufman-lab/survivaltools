@@ -97,12 +97,18 @@ split_by_event_times <- function(x,interval_vars,id_var,event_indicator,group_va
          where particpants follow-up time has already been split into multiple rows.")
   }
 
-  X <- data.table(v=1)
-  setnames(X,"v",event_indicator)
+  if(sum(x[[event_indicator]])==0){
+    #there aren't any events in this dataset!
+    out <- copy(x)
+    out[, `:=`(start=.SD[[1]],end=.SD[[2]]),.SDcols=interval_vars]
+    setcolorder(out, c(group_vars,id_var,"start","end",event_indicator))
+    return(out)
+  }
+
 
   #get unique event dates (excluding censor dates)
   #subset to events where event_indicator is equal to 1 and take unique values
-  event_dates <- unique(x[X, on=c(event_indicator),c(group_vars,interval_vars[2]),with=FALSE])
+  event_dates <- unique(x[J(1L), on=c(event_indicator),c(group_vars,interval_vars[2]),with=FALSE])
   setnames(event_dates,interval_vars[2],"actual_event_date")
 
   stopifnot(nrow(event_dates[is.na(actual_event_date)])==0)

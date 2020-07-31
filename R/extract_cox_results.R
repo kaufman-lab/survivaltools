@@ -3,12 +3,18 @@
 #' take a single cox model and extract the coeffients from summary
 #'
 #'@param model A model returned by coxph
+#'@param RHS description of the model here. if NULL this will try to extrac the formulat from the call
+#'but this may not work if you're fitting the model programmatically (ie via a loop)
 #'@return a data.table of coefficients from the models including a column "RHS" for the
 #'RHS of the formula from the call
 #'@export
-extract_coef_table <- function(model){
+extract_coef_table <- function(model,RHS=NULL){
   out <- as.data.table(coef(summary(model)),keep.rownames=TRUE)
-  out[,RHS:=as.character(as.formula(model$call))[3]]
+  if(is.null(RHS)){
+    out[,RHS:=as.character(as.formula(model$call))[3]]
+  }else{
+    out[, RHS:=RHS]
+  }
   setcolorder(out, "RHS")
   out[]
 }
