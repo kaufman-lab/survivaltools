@@ -4,10 +4,13 @@
 \alias{extract_coef_table}
 \title{extract coefficients from a cox model and turn them into a table}
 \usage{
-extract_coef_table(model)
+extract_coef_table(model, RHS = NULL)
 }
 \arguments{
 \item{model}{A model returned by coxph}
+
+\item{RHS}{description of the model here. if NULL this will try to extrac the formulat from the call
+but this may not work if you're fitting the model programmatically (ie via a loop)}
 }
 \value{
 a data.table of coefficients from the models including a column "RHS" for the

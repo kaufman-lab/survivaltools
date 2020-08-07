@@ -21,9 +21,6 @@ library(survivaltools)
 library(data.table)
 library(parallel)
 library(survival)
-library(ggplot2)
-n_cores <- max(1L,detectCores()-1)
-
 set.seed(20)
 ```
 
@@ -113,32 +110,26 @@ par(mfrow=c(1,1))
 
 
 
-Start with a simple simulation with calendar time as the baseline time-scale.
+A simple simulation with calendar time as the baseline time-scale.
 No pm2.5 exposure, but include an effect of aging and an effect of smoking.
 We shouldn't expect to need to adjust for age here because even though age determines
 risk it's not associated with smoking status.
-```{r,eval=FALSE}
+```{r}
 
-
-#stratified_smoking_coef 
-#unstratified_smoking_coef
-cl <- makeCluster(getOption("cl.cores",n_cores ))
-results <- parLapply(cl, 1:200,function(i){
-  library(data.table)
-  setDTthreads(1)
+results <- lapply(X=1:2,FUN=function(x){
   library(survivaltools)
   library(survival)
-
-  ppt_tbl1 <- generate_ppt_table(2000)
+  
+  ppt_tbl1 <- generate_ppt_table(1000)
   ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=.5)]
   x <- prep_tv_dataset(ppt_tbl1,include_exposure = FALSE)
   
-
+  
   q <- simulate_survival(x=x,
                          covar_names=c("smoking","age_since65_tv"),
                          covar_coefs=c(1.2,1/10000)
- )
-
+  )
+  
   q <- q[ppt_tbl1,on=c("ppt_id","t_start")]
   
   
@@ -154,8 +145,8 @@ results <- parLapply(cl, 1:200,function(i){
   attr(out, "n_events") <- q[, sum(event)]
   out
   
-})
-stopCluster(cl)
+}) 
+
 ```
 
 
@@ -170,22 +161,37 @@ summarize_simulation_table(rbindlist(unlist(results,recursive=FALSE)))
 As expected, results are unbiased regardless of whether we stratify, adjust, or ignore age.
 
 
-## Survival simulation with a time-varying variable
-
-Add a time-varying covariate as
 
 
+## Survival simulation with a time-varying variable. model on calendar time-scale
 
-```{r,eval=FALSE}
+Simulation:
 
-cl <- makeCluster(getOption("cl.cores",n_cores ))
-results <- parLapply(cl, 1:2000,function(i){
-  library(data.table)
-  setDTthreads(1)
+Add two time-varying covariates:  time-varying "exposure" which decreases over time, time-varying age which obviously increases over time. Include non-zero coefficients for these terms. Simulate baseline hazard on a baseline timescale of calendar time with a temporal trend in that baseline time-scale (hazard decreases over time). 
+
+
+Model:
+Baseline time-scale is calendar time (exact). Consider various adjustments/stratification for age discretized to year.
+
+- no adjustment for age
+- adjust for baseline age
+- adjust for time-varying age
+- adjust for time-varying age interacted with baseline year
+- stratify by baseline age
+- stratify by time-varying age
+
+
+
+```{r}
+
+
+
+results2 <- lapply(X=1:2,FUN=function(x){
   library(survivaltools)
   library(survival)
-
-  ppt_tbl1 <- generate_ppt_table(2000)
+  
+  
+  ppt_tbl1 <- generate_ppt_table(1000)
   x <- prep_tv_dataset(ppt_tbl1)
   
 
@@ -204,724 +210,39 @@ results <- parLapply(cl, 1:2000,function(i){
   
   q_split[x, exposure:=exposure, on=c("ppt_id",end="time")]
   
+  q_split[, tv_age_c:=baseline_age_c+floor((end-t_start)/365.25)]
+  
+  
 
   
-  formulas <- list(Surv(t_start,t_end,event)~strata(baseline_age_c)+exposure,
-       Surv(t_start,t_end,event)~baseline_age_c+exposure,
-       Surv(t_start,t_end,event)~baseline_age_c*baseline_year+exposure,
-       Surv(t_start,t_end,event)~baseline_age+exposure,
-       Surv(t_start,t_end,event)~baseline_age*baseline_year+exposure,
-       Surv(t_start,t_end,event)~exposure
+  formulas <- list(
+       Surv(start,end,event)~strata(baseline_age_c)+exposure,
+       Surv(start,end,event)~baseline_age_c+exposure,
+       Surv(start,end,event)~baseline_age_c*baseline_year+exposure,
+       Surv(start,end,event)~exposure,
+       Surv(start,end,event)~strata(tv_age_c)+exposure,
+       Surv(start,end,event)~tv_age_c+exposure,
+       Surv(start,end,event)~tv_age_c*baseline_year+exposure,
+       Surv(start,end,event)~exposure
        )
   
-  out <- lapply(formulas, function(x){
+  out <- future.apply::future_lapply(formulas, function(x){
     extract_coef_table(coxph(x,data=q_split),RHS=as.character(x)[3])
   })
   
   attr(out, "n_events") <- q[, sum(event)]
   out
   
-})
-stopCluster(cl)
+}) 
+
+
 ```
 
 
 ```{r,eval=FALSE}
-summary(sapply(results, attr, "n_events"))
+summary(sapply(results2, attr, "n_events"))
 ```
 
 ```{r,eval=FALSE}
-summarize_simulation_table(rbindlist(unlist(results,recursive=FALSE)))
+summarize_simulation_table(rbindlist(unlist(results2,recursive=FALSE)))
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## time-varying exposure
-
-
-Now include the pm25 values as a time-varying variable.
-```{r,eval=FALSE}
-
-#age_stratified_pm25_coef <- vector()
-#age_adjusted_pm25_coef <- vector()
-#age_unadjusted_pm25_coef <- vector()
-
-cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
-results1 <- parLapply(cl, 1:39,function(i){
-  library(data.table)
-  setDTthreads(1)
-  library(survivaltools)
-  library(survival)
-  ppt_tbl1  <- generate_ppt_table(1000)
-  ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=.5)]
-  tv_table <- generate_hazard_table(ppt_tbl1)
-  exposure_table1 <- generate_exposure_table(ppt_tbl1)
-  
-  #merge in exposures to the hazard table.
-  tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
-  
-  
-  q <- simulate_survival(x=ppt_tbl1,
-                         z=tv_table,
-                         x_covar_names="smoking",
-                         z_tv_covar_names = c("age_since65_tv","pm25_avg"),
-                         covar_coefs=c(2),
-                         tv_covar_coefs=c(1/10000,0.01)
- )
-
-  setnames(q, c("start","end"),c("start0","end0"))
-
-  bins <- q[,list(lower=as.integer(seq(min(baseline_age),max(baseline_age)+366,by=365)))]
-  bins[, upper:=shift(lower,type="lead")-1L]
-  bins <- na.omit(bins)
-  q[,baseline_age_c:=bin_time(as.integer(baseline_age),bins,snapto = "count")]
-  
-q_split <- split_by_event_times(q,interval_vars=c("start0","end0"),id_var="ppt_id",event_indicator="event")
-
-#merge in exposure to the andersen-gill format of the simulated events dataset:
-  #"end" is the end of each period in the events dataset and "time" is the time of the end of the 2-year exposure average.
-  #so each row in q_split will now have a pm2.5 average for the 2 years prior to the end of that interval.
-q_split[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","end"="time")]
-
-  
-age_stratified_pm25_coef <- coef(summary(coxph(Surv(start,end,event)~pm25_avg + smoking+ strata(baseline_age_c),data=q_split)))
-age_adjusted_pm25_coef <- coef(summary(coxph(Surv(start,end,event)~pm25_avg + smoking+ baseline_age,data=q_split)))
-age_unadjusted_pm25_coef <- coef(summary(coxph(Surv(start,end,event)~pm25_avg + smoking,data=q_split)))
-
-list(age_stratified_pm25_coef=age_stratified_pm25_coef, age_adjusted_pm25_coef=age_adjusted_pm25_coef,
-     age_unadjusted_pm25_coef=age_unadjusted_pm25_coef)
-})
-stopCluster(cl)
-
-
-resultstable1 <- summarize_simulation_table(extract_simulation_table(results1))
-resultstable1[rn=="pm25_avg"]
-
-```
-
-Regardless of what sort of adjustment you use for age, none of these pm25 coefficients seem to be biased. 
-
-Note that the above code tests the "split_by_event_times" function I wrote to turn a dataset into andersen gill format.
-
-compare:
-
-```{r,eval=FALSE}
-q_split
-q
-```
-
-## Testing a trick to make the dataset smaller
-
-If you're stratifying by a variable, you only need to split *within* rows of the stratification variable:
-
-Here I compare splitting the dataset into andersen gill ignoring strata (ie cutting at every event date)
-vs splitting the data into andersen gill format *within strata* (ie only cutting at events within the same strata)
-```{r,eval=FALSE}
-
-
-#fullsplit_age_stratified_coefs 
-#fullsplit_a_age_unstratified_coefs 
-#stratumsplit_age_stratified_coefs 
-#stratumsplit_age_unstratified_coefs 
-
-#"stratumsplit" means interval cuts only at events occuring in the same strata
-#"fullsplit" means interval cuts happen at all event times in the dataset, regardless of the strata.
-
-cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
-results2 <- parLapply(cl, 1:39,function(i){
-  library(data.table)
-  setDTthreads(1)
-  library(survivaltools)
-  library(survival)
-  ppt_tbl1  <- generate_ppt_table(1000)
-  ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=.5)]
-  tv_table <- generate_hazard_table(ppt_tbl1)
-  exposure_table1 <- generate_exposure_table(ppt_tbl1)
-  
-  tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
-  
-  
-  q <- simulate_survival(x=ppt_tbl1,
-                         z=tv_table,
-                         x_covar_names="smoking",
-                         z_tv_covar_names = c("age_since65_tv","pm25_avg"),
-                         covar_coefs=c(2),
-                         tv_covar_coefs=c(1/10000,0.01)
- )
-
-  setnames(q, c("start","end"),c("start0","end0"))
-
-  bins <- q[,list(lower=as.integer(seq(min(baseline_age),max(baseline_age)+366,by=365)))]
-  bins[, upper:=shift(lower,type="lead")-1L]
-  bins <- na.omit(bins)
-  q[,baseline_age_c:=bin_time(as.integer(baseline_age),bins,snapto = "count")]
-  
-q_fullsplit <- 
-  split_by_event_times(q,interval_vars=c("start0","end0"),id_var="ppt_id",event_indicator="event")
-#merge in exposure
-q_fullsplit[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","end"="time")]
-
-
-q_stratumsplit <- 
-  split_by_event_times(q,interval_vars=c("start0","end0"),id_var="ppt_id",event_indicator="event",
-                                              group_vars=c("baseline_age_c"))
-#merge in exposure
-q_stratumsplit[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","end"="time")]
-
-
-
-
-fullsplit_age_stratified_coefs <- 
-  coef(summary(coxph(Surv(start,end,event)~pm25_avg + smoking + strata(baseline_age_c),
-                                                         data=q_fullsplit)))
-
-#not stratified by age but maybe not necessarily wrong if age isn't actually acting as a confounder
-fullsplit_a_age_unstratified_coefs <- 
-  coef(summary(coxph(Surv(start,end,event)~pm25_avg + smoking,
-             data=q_fullsplit)))
-
-##should be same as fullsplit_age_stratified_pm25_coef
-stratumsplit_age_stratified_coefs <- 
-  coef(summary(coxph(Surv(start,end,event)~pm25_avg + smoking + strata(baseline_age_c),
-             data=q_stratumsplit)))
-
-
-#wrong: splitting within age strata but then not stratifying by age:
-stratumsplit_age_unstratified_coefs <- 
-  coef(summary(coxph(Surv(start,end,event)~pm25_avg + smoking,
-             data=q_stratumsplit)))
-
-list(fullsplit_age_stratified_coefs=fullsplit_age_stratified_coefs, 
-     fullsplit_a_age_unstratified_coefs=fullsplit_a_age_unstratified_coefs, 
-     stratumsplit_age_stratified_coefs=stratumsplit_age_stratified_coefs, 
-     stratumsplit_age_unstratified_coefs=stratumsplit_age_unstratified_coefs
-     )
-
-})
-stopCluster(cl)
-
-
-resultstable2 <- summarize_simulation_table(extract_simulation_table(results2))
-resultstable2[rn=="pm25_avg"]
-
-```
-
-
-
-Note that splitting periods based on event times only by events in the same strata 
-returns the exact same estimate as splitting periods at every event time regardless of strata when you
-stratify by that point. 
-
-This is an important point because of the following:
-
-```{r,eval=FALSE}
-nrow(q_fullsplit)
-nrow(q_stratumsplit)
-```
-
-Splitting only within strata allows you to dramatically reduce the size of your dataset when performing a time-varying analysis.
-
-This allows you to fit a model in situations when the full split dataset would cause memory issues.
-
-The major caveat is that you *must* stratify by any variables that you used as a grouping variable
-for splitting (note that the unstratified result is very biased when using the stratumsplit approach
-but the unstratified result is not biased when using the fullsplit approach)
-
-
-
-
-
-
-### simulation: stratifying by a second time scale
-
-If age is the underlying time-scale should you stratify by baseline age or age at time of event?
-
-
-Starting with a simple non-timevarying exposure (smoking). This is similar to the first example (with just smoking)
-but
-now smoking status will be correlated with both birth year and recruitment date. In the previous examples
-there is already an independent effect of aging on risk. Add an independent linear trend of
-calendar time of risk (to signify changes in health over time that aren't due to birth cohort: 
-e.g. diet or other environmental factors).
-
-The goal of this is to compare stratifying by age at enrollment with age at day of event.
-
-
-```{r,eval=FALSE}
-
-##it's not possible to split events within a strata defined by time-varying age
- #because calculating time-varying age depends on knowing the splits
-
-#so stratumsplit can't be mixed with stratification by time-varying age
-
-cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
-results3 <- parLapply(cl, 1:39,function(i){
-  library(data.table)
-  setDTthreads(1)
-  library(survivaltools)
-  library(survival)
-
-  ppt_tbl1 <- generate_ppt_table(1000) #increase sample size from previous examples
-  ppt_tbl1[, dob:=t_start-baseline_age]
-  ppt_tbl1[, centered_dob:=dob-mean(dob)]
-  ppt_tbl1[, centered_t_start:=t_start-mean(t_start)]
-  ppt_tbl1[, smoking_probability:=0.5*exp(-0.0001*centered_dob+0.0005*centered_t_start)]
-  ppt_tbl1[smoking_probability<0,smoking_probability:=0]
-  ppt_tbl1[smoking_probability>1,smoking_probability:=1]
-  #ppt_tbl1[, plot(smoking_probability~centered_dob)]
-  #ppt_tbl1[, plot(smoking_probability~centered_t_start)]
-  ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=smoking_probability)]
-  tv_table <- generate_hazard_table(ppt_tbl1)
-  
-  exposure_table1 <- generate_exposure_table(ppt_tbl1)
-  
-  tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
-  
-  
-  tv_table[, time_centered:=time-mean(time)]
-
-  q <- simulate_survival(x=ppt_tbl1,
-                         z=tv_table,
-                         x_covar_names="smoking",
-                         z_tv_covar_names = c("age_since65_tv","time_centered","pm25_avg"),
-                         covar_coefs=2,
-                         tv_covar_coefs=c(1/10000, -1/5000,0.01),
-                         return_hazard=TRUE
- )
-  setnames(q, c("start","end"),c("start0","end0"))
-
-    #create time-invariant baseline age strata from continuous baseline age:
-
-  bins <- q[,list(lower=as.integer(seq(min(baseline_age),max(baseline_age)+366,by=365)))]
-  bins[, upper:=shift(lower,type="lead")-1L]
-  bins <- na.omit(bins)
-  q[,baseline_age_c:=bin_time(as.integer(baseline_age),bins,snapto = "count")]
-  
-  
-  q_fullsplit <- 
-  split_by_event_times(q,interval_vars=c("start0","end0"),id_var="ppt_id",event_indicator="event")
-
-  q_stratumsplit <- 
-  split_by_event_times(q,interval_vars=c("start0","end0"),id_var="ppt_id",event_indicator="event",
-                                              group_vars=c("baseline_age_c"))
-
-  #merge in exposure
-  q_fullsplit[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","end"="time")]
-  q_stratumsplit[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","end"="time")]
-
-
-  #create time-varying age variable:
-  q_fullsplit[,tv_age:=baseline_age+(end-start0)]
-  
-  #create time-varying age strata from continuous time-varying age:
-  bins_tv <- q_fullsplit[,list(lower=as.integer(seq(min(tv_age),max(tv_age)+366,by=365)))]
-  bins_tv[, upper:=shift(lower,type="lead")-1L]
-  bins_tv <- na.omit(bins_tv)
-  q_fullsplit[,tv_age_c:=bin_time(as.integer(tv_age),bins_tv,snapto = "count")]
-  
-  
-
-coefs_stratified_by_timevarying_age_fullsplit <- 
-  coef(summary(coxph(Surv(start,end,event)~strata(tv_age_c)+smoking+pm25_avg,data=q_fullsplit)))
-
-coefs_stratified_by_baseline_age_stratumsplit <- 
-    coef(summary(coxph(Surv(start,end,event)~strata(baseline_age_c)+smoking+pm25_avg,data=q_stratumsplit)))
-
-coefs_stratified_by_baseline_age_fullsplit <- 
-  coef(summary(coxph(Surv(start,end,event)~strata(baseline_age_c)+smoking+pm25_avg,data=q_fullsplit)))
-
-coefs_adjusted_for_baseline_age_stratumsplit <- 
-  coef(summary(coxph(Surv(start0,end0,event)~smoking+baseline_age_c+pm25_avg,data=q_stratumsplit)))
-
-coefs_adjusted_for_timevarying_age_fullsplit <- 
-  coef(summary(coxph(Surv(start,end,event)~smoking+tv_age_c+pm25_avg,data=q_fullsplit)))
-
-coefs_unadjusted_for_age_stratumsplit <- 
-  coef(summary(coxph(Surv(start0,end0,event)~smoking+pm25_avg,data=q_stratumsplit)))
-
-
-
-out <- list(coefs_stratified_by_timevarying_age_fullsplit=coefs_stratified_by_timevarying_age_fullsplit,
-     coefs_stratified_by_baseline_age_stratumsplit=coefs_stratified_by_baseline_age_stratumsplit,
-     coefs_stratified_by_baseline_age_fullsplit=coefs_stratified_by_baseline_age_fullsplit,
-     coefs_adjusted_for_baseline_age_stratumsplit=coefs_adjusted_for_baseline_age_stratumsplit,
-     coefs_adjusted_for_timevarying_age_fullsplit=coefs_adjusted_for_timevarying_age_fullsplit,
-     coefs_unadjusted_for_age_stratumsplit=coefs_unadjusted_for_age_stratumsplit
-     )
-
-attr(out, "n_events") <- q[, sum(event)]
-out
-})
-
-resultstable3 <- summarize_simulation_table(extract_simulation_table(results3))
-resultstable3[rn=="smoking"]
-resultstable3[rn=="pm25_avg"]
-```
-It doesn't matter whether you stratify for baseline age or time-varying age, all of the above stratification methods are correct.
-
-**However, in this context where pm2.5 is time-varying and is correlated with age which is also time-varying (pm2.5 declines over time and age increases over time) adjustment for age is NOT sufficient--age stratification is the only correct approach to obtain an unbiased coefficient for pm2.5**
-
-
-
-
-
-
-## simulation: dealing with multiple cohorts and data-privacy issues
-
-### pooled analysis (on age time-scale) with lots of stratum vs a meta-analysis (on calendar time)
-
-simulation characteristics
-
-pooled stratum analysis characteristics:
-- From each cohort get the data as study time, but they also provide us with age (in years) at study entry.
-- since we know days since enrollment for events as well as baseline age at enrollment, this allows us to use age as the baseline time-scale.
-- we get exposure averages calculated to the exact calendar day of event (calculated in their respective enclaves) but we don't know the calendar day of event.
-- we also get a categorical variable for year or month of study entry (possibly masked--ie we might not know value corresponds to what time)
-- we stratify by the masked year of study entry categorical variable and possibly stratify by cohort (if we stratified cohort this would essentially be an interaction or a cross of the cohort categories with the time of study entry categories)
-  - crossing these would allow us to use different bin sizes and cut points for time of study entry for different cohorts, reducing the need for coordination/harmonization of this data.
-
-alternate meta-analysis characteristics:
-- Since analyses are taking place in their respective enclaves, we know exact day of event
-- we use calendar time as the baseline time-scale
-- we stratify by age (in years) at baseline
-- each cohort is fit separately and the effect estimates and standard errors are combined.
-
-
-there are  fundamental differences between these analyses:
-- the meta-analysis allows for more precise comparison of risk at exactly the same calendar time 
-(since the baseline timescale is continuous calendar time whereas for the pooled analysis we're only stratifying by discrete time: ie year of enrollment)
-- there may be differences in efficiency due to the different amounts of stratification occuring.
-- the metanalysis is like interacting each cohort by each adjustment variable
-- the metanalysis will be more challenging to estimate non-linear effects
-
-
-
-#metaanalysis
-https://cran.r-project.org/web/packages/meta/meta.pdf
-"This function provides the generic inverse variance method for meta-analysis which requires treatment estimates and their standard errors (Borenstein et al., 2010). The method is useful, e.g., for pooling of survival data (using log hazard ratio and standard errors as input). Arguments TE and seTE can be used to provide treatment estimates and standard errors directly. However, it is possible to derive these quantities from other information."
-
-
-
-
-
-
-
-```{r,eval=FALSE}
-
-##it's not possible to split events within a strata defined by time-varying age
- #because calculating time-varying age depends on knowing the splits
-
-#so stratumsplit can't be mixed with stratification by time-varying age
-
-cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
-results3 <- parLapply(cl, 1:39,function(i){
-  library(data.table)
-  setDTthreads(1)
-  library(survivaltools)
-  library(survival)
-
-  ppt_tbl1 <- generate_ppt_table(1000) #increase sample size from previous examples
-  ppt_tbl1[, dob:=t_start-baseline_age]
-  ppt_tbl1[, centered_dob:=dob-mean(dob)]
-  ppt_tbl1[, centered_t_start:=t_start-mean(t_start)]
-  ppt_tbl1[, smoking_probability:=0.5*exp(-0.0001*centered_dob+0.0005*centered_t_start)]
-  ppt_tbl1[smoking_probability<0,smoking_probability:=0]
-  ppt_tbl1[smoking_probability>1,smoking_probability:=1]
-  #ppt_tbl1[, plot(smoking_probability~centered_dob)]
-  #ppt_tbl1[, plot(smoking_probability~centered_t_start)]
-  ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=smoking_probability)]
-  tv_table <- generate_hazard_table(ppt_tbl1)
-  
-  exposure_table1 <- generate_exposure_table(ppt_tbl1)
-  
-  tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
-  
-  
-  tv_table[, time_centered:=time-mean(time)]
-
-  q <- simulate_survival(x=ppt_tbl1,
-                         z=tv_table,
-                         x_covar_names="smoking",
-                         z_tv_covar_names = c("age_since65_tv","time_centered","pm25_avg"),
-                         covar_coefs=2,
-                         tv_covar_coefs=c(1/10000, -1/5000,0.01)
- )
-  setnames(q, c("start","end"),c("start0","end0"))
-
-    #create time-invariant baseline age strata from continuous baseline age:
-
-  bins <- q[,list(lower=as.integer(seq(min(baseline_age),max(baseline_age)+366,by=365)))]
-  bins[, upper:=shift(lower,type="lead")-1L]
-  bins <- na.omit(bins)
-  q[,baseline_age_c:=bin_time(as.integer(baseline_age),bins,snapto = "count")]
-  
-  
-  q_fullsplit <- 
-  split_by_event_times(q,interval_vars=c("start0","end0"),id_var="ppt_id",event_indicator="event")
-
-  q_stratumsplit <- 
-  split_by_event_times(q,interval_vars=c("start0","end0"),id_var="ppt_id",event_indicator="event",
-                                              group_vars=c("baseline_age_c"))
-
-  #merge in exposure
-  q_fullsplit[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","end"="time")]
-  q_stratumsplit[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","end"="time")]
-
-
-  #create time-varying age variable:
-  q_fullsplit[,tv_age:=baseline_age+(end-start0)]
-  
-  #create time-varying age strata from continuous time-varying age:
-  bins_tv <- q_fullsplit[,list(lower=as.integer(seq(min(tv_age),max(tv_age)+366,by=365)))]
-  bins_tv[, upper:=shift(lower,type="lead")-1L]
-  bins_tv <- na.omit(bins_tv)
-  q_fullsplit[,tv_age_c:=bin_time(as.integer(tv_age),bins_tv,snapto = "count")]
-  
-  
-
-coefs_stratified_by_timevarying_age_fullsplit <- 
-  coef(summary(coxph(Surv(start,end,event)~strata(tv_age_c)+smoking+pm25_avg,data=q_fullsplit)))
-
-coefs_stratified_by_baseline_age_stratumsplit <- 
-    coef(summary(coxph(Surv(start,end,event)~strata(baseline_age_c)+smoking+pm25_avg,data=q_stratumsplit)))
-
-coefs_stratified_by_baseline_age_fullsplit <- 
-  coef(summary(coxph(Surv(start,end,event)~strata(baseline_age_c)+smoking+pm25_avg,data=q_fullsplit)))
-
-coefs_adjusted_for_baseline_age_stratumsplit <- 
-  coef(summary(coxph(Surv(start0,end0,event)~smoking+baseline_age_c+pm25_avg,data=q_stratumsplit)))
-
-coefs_adjusted_for_timevarying_age_fullsplit <- 
-  coef(summary(coxph(Surv(start,end,event)~smoking+tv_age_c+pm25_avg,data=q_fullsplit)))
-
-coefs_unadjusted_for_age_stratumsplit <- 
-  coef(summary(coxph(Surv(start0,end0,event)~smoking+pm25_avg,data=q_stratumsplit)))
-
-
-
-out <- list(coefs_stratified_by_timevarying_age_fullsplit=coefs_stratified_by_timevarying_age_fullsplit,
-     coefs_stratified_by_baseline_age_stratumsplit=coefs_stratified_by_baseline_age_stratumsplit,
-     coefs_stratified_by_baseline_age_fullsplit=coefs_stratified_by_baseline_age_fullsplit,
-     coefs_adjusted_for_baseline_age_stratumsplit=coefs_adjusted_for_baseline_age_stratumsplit,
-     coefs_adjusted_for_timevarying_age_fullsplit=coefs_adjusted_for_timevarying_age_fullsplit,
-     coefs_unadjusted_for_age_stratumsplit=coefs_unadjusted_for_age_stratumsplit
-     )
-
-attr(out, "n_events") <- q[, sum(event)]
-out
-})
-
-resultstable3 <- summarize_simulation_table(extract_simulation_table(results3))
-resultstable3[rn=="smoking"]
-resultstable3[rn=="pm25_avg"]
-```
-It doesn't matter whether you stratify for baseline age or time-varying age, all of the above stratification methods are correct.
-
-**However, in this context where pm2.5 is time-varying and is correlated with age which is also time-varying (pm2.5 declines over time and age increases over time) adjustment for age is NOT sufficient--age stratification is the only correct approach to obtain an unbiased coefficient for pm2.5**
-
-
-
-
-
-
-
-```{r,eval=FALSE}
-###effect of smoking, aging, time, and pm25
- #pm2.5 also declines with time.
- #hazard spline varies randomly over time
-
-
-
-cl <- makeCluster(getOption("cl.cores",n_cores ))
-clusterExport(cl, c("generate_ppt_table","generate_hazard_table","generate_exposure_table"))
-results3 <- parLapply(cl, 1:39,function(i){
-  library(data.table)
-  setDTthreads(1)
-  library(survivaltools)
-  library(survival)
-
-  ppt_tbl1 <- generate_ppt_table(1000) #increase sample size from previous examples
-  ppt_tbl1[, dob:=t_start-baseline_age]
-  ppt_tbl1[, centered_dob:=dob-mean(dob)]
-  ppt_tbl1[, centered_t_start:=t_start-mean(t_start)]
-  ppt_tbl1[, smoking_probability:=0.5*exp(-0.0001*centered_dob+0.0005*centered_t_start)]
-  ppt_tbl1[smoking_probability<0,smoking_probability:=0]
-  ppt_tbl1[smoking_probability>1,smoking_probability:=1]
-
-  ppt_tbl1[, smoking:=rbinom(.N,size=1,prob=smoking_probability)]
-  tv_table <- generate_hazard_table(ppt_tbl1)
-  
-  exposure_table1 <- generate_exposure_table(ppt_tbl1)
-  
-  tv_table[exposure_table1, pm25_avg:=pm25_avg, on=c("ppt_id","time")]
-  
-  
-  tv_table[, time_centered:=time-mean(time)]
-
-  q <- simulate_survival(x=ppt_tbl1,
-                         z=tv_table,
-                         x_covar_names="smoking",
-                         z_tv_covar_names = c("age_since65_tv","time_centered","pm25_avg"),
-                         covar_coefs=2,
-                         tv_covar_coefs=c(1/10000, -1/5000,0.01)
- )
-  setnames(q, c("start","end"),c("start0","end0"))
-
-  #create time-invariant baseline age strata from continuous baseline age:
-
-  bins <- q[,list(lower=as.integer(seq(min(baseline_age),max(baseline_age)+366,by=365)))]
-  bins[, lower:=as.integer(round(round(lower/365.25)*365.25))] #round down to integer age
-  bins[, upper:=shift(lower,type="lead")-1L]
-  bins <- na.omit(bins)
-  
-  calendartimebins <- q[,list(lower=as.integer(seq(min(start0),max(start0)+366,by=365)))]
-  calendartimebins[, upper:=shift(lower,type="lead")-1L]
-  calendartimebins <- na.omit(calendartimebins)
-  
-  q[,baseline_age_c:=bin_time(as.integer(baseline_age),bins,snapto = "start")]
-  q[,baseline_calendar_c:=bin_time(as.integer(start0),calendartimebins,snapto = "count")]
-  
-  q[, followup_age := baseline_age + (end0-start0) ]
-  q[, inexact_followup_age := baseline_age_c + (end0-start0) ]
-  q[, study_start:=as.integer(0L)]
-  q[, study_end:=end0-start0]
-  
-  q_calendar_timescale <- 
-  split_by_event_times(q,interval_vars=c("start0","end0"),id_var="ppt_id",event_indicator="event",
-                                              group_vars=c("baseline_age_c"))
-
-  q_inexactage_timescale <- 
-  split_by_event_times(q,interval_vars=c("baseline_age_c","inexact_followup_age"),id_var="ppt_id",event_indicator="event",
-                                              group_vars=c("baseline_calendar_c"))
-  
-  q_exactage_timescale <- 
-  split_by_event_times(q,interval_vars=c("baseline_age","followup_age"),id_var="ppt_id",event_indicator="event",
-                                              group_vars=c("baseline_calendar_c"))
-  
-  q_study_timescale <- 
-  split_by_event_times(q,interval_vars=c("study_start","study_end"),id_var="ppt_id",event_indicator="event",
-                                              group_vars=c("baseline_age_c","baseline_calendar_c"))
-  
-  #merge in exposure
-  q_calendar_timescale[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","end"="time")]
-  
-  q_inexactage_timescale[, calend:=start0+end-baseline_age_c]
-  q_exactage_timescale[, calend:=start0+end-baseline_age]
-  q_study_timescale[, calend:=start0+end]
-  
-  q_inexactage_timescale[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","calend"="time")]
-  q_exactage_timescale[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","calend"="time")]
-  q_study_timescale[exposure_table1, pm25_avg:=pm25_avg,on=c("ppt_id"="ppt_id","calend"="time")]
-
-
-  
-
-coefs_calendar_timescale <- 
-  coef(summary(coxph(Surv(start,end,event)~strata(baseline_age_c)+smoking+pm25_avg,data=q_calendar_timescale)))
-
-coefs_inexactage_timescale <- 
-    coef(summary(coxph(Surv(start,end,event)~strata(baseline_calendar_c)+smoking+pm25_avg,data=q_stratumsplit)))
-
-coefs_exactage_timescale <- 
-  coef(summary(coxph(Surv(start,end,event)~strata(baseline_age_c)+smoking+pm25_avg,data=q_fullsplit)))
-
-coefs_study_timescale <- 
-  coef(summary(coxph(Surv(start0,end0,event)~smoking+baseline_age_c+pm25_avg,data=q_stratumsplit)))
-
-coefs_adjusted_for_timevarying_age_fullsplit <- 
-  coef(summary(coxph(Surv(start,end,event)~smoking+tv_age_c+pm25_avg,data=q_fullsplit)))
-
-coefs_unadjusted_for_age_stratumsplit <- 
-  coef(summary(coxph(Surv(start0,end0,event)~smoking+pm25_avg,data=q_stratumsplit)))
-
-
-
-out <- list(coefs_stratified_by_timevarying_age_fullsplit=coefs_stratified_by_timevarying_age_fullsplit,
-     coefs_stratified_by_baseline_age_stratumsplit=coefs_stratified_by_baseline_age_stratumsplit,
-     coefs_stratified_by_baseline_age_fullsplit=coefs_stratified_by_baseline_age_fullsplit,
-     coefs_adjusted_for_baseline_age_stratumsplit=coefs_adjusted_for_baseline_age_stratumsplit,
-     coefs_adjusted_for_timevarying_age_fullsplit=coefs_adjusted_for_timevarying_age_fullsplit,
-     coefs_unadjusted_for_age_stratumsplit=coefs_unadjusted_for_age_stratumsplit
-     )
-
-attr(out, "n_events") <- q[, sum(event)]
-out
-})
-
-resultstable3 <- summarize_simulation_table(extract_simulation_table(results3))
-resultstable3[rn=="smoking"]
-resultstable3[rn=="pm25_avg"]
-```
-
-##This entire simulation gets moved to the new kaufmanlab repo
-
-age analysis steps
-- you're given calendar time day of enrollment and day of event/last day of followup and event indicator
-- you're given age in years at baseline (round this if it's not an integer)
-- take age in years at baseline and convert to days
-- calculate age in years at event date or end of followoup
-- within <months/years> of event date, break up age intervals at event times
-- those months/years of age MUST be stratification variables
-- calculate date at end of interval (end of interval is in age)
-- use that date as exposure averag3
-
-
-
-
-
-None of us caught the fact that just because we won't receive DOB doesn't mean we can't use age as the time-scale. 
-we can just use age at baseline to calculate approximate age and use that as the time-scale.
-that saves us from needing to deal with three time-scales
-
-so we use age as the baseline time-scale (transformed from study time) and stratify by month or year of study entry (however fine they're willing to provide). categories don't need to align if we're ok stratifying by cohort as well.
-
-
-There are three potential issues to be aware of for stratification:
-- increasingly calendar time smaller strata mean more participants are essentially thrown out (because there are fewer participants with the same age at entry and the same binned calendar time at entry as those bins get smaller )
- -  this may mean the pm25 coefficient is biased, although this may not be the case since conditional logistic regression doesn't bias the coefficient and cox is basically conditional logistic regression with stratum as nuicense parameters. This can be tested via simulation
- - this may may mean that as stratum get smaller, efficiency/power decreases because the effective sample size is reduced (because every event is compared to fewer and fewer non-events as bin sizes decrease). this can also be tested via simulation.
- - using calendar time stratum that are too large may lead to residual confounding. show this via simulation.
- - this residual confounding can be eliminated by averaging exposure to the bin rather than the exact day of event. this means there's no left-over temporal variation in exposure after controlluming for calendar time strata. However, this leads to measurement error which attenuates to the null.
- 
-- It may be possible to use finer calendar time bins (say, a month) while using a baseline starting age that is less granular. Already starting with baseline age in years (rounded down) means that the loss of 
-
-
-
-## ref
-understanding non-proportional hazards:
-"Taking x2 = x1 + 1, the hazard ratio reduces to HR = exp(β) and corresponds to the effect of one unit increase in the explanatory variable X on the risk of event. Since β = log(HR), β is referred as the log hazard ratio. Although the hazard rate hx(t) is allowed to vary over time, the hazard ratio HR is constant; this is the assumption of proportional hazards. If the HR is greater than 1 (β > 0), the event risk is increased for subjects with covariate value x2 compared to subjects with covariate value x1, while a HR lower than 1 (β < 0) indicates a decreased risk. When the HR is not constant over time, the variable is said to have a time-varying effect; for example, the effect of a treatment can be strong immediately after treatment but fades with time. This should not be confused with a time-varying covariate, which is a variable whose value is not fixed over time, such as smoking status. Indeed, a person can be a non-smoker, then a smoker, then a non-smoker. Note however, that a variable may be both time-varying and have an effect that changes over time.
-
-In a Cox PH model, the HR is estimated by considering each time t at which an event occurs. When estimating the overall HR over the complete follow-up period, the same weights are given to the very early HR which affect almost all individuals and to very late HR affecting only the very few individuals still at risk. The HR is thus averaged over the event times. In the case of proportional hazards, the overall HR is not affected by this weighting procedure. If, on the other hand, the HR changes over time, that is, the hazard rates are not proportional, then equal weighting may result in a non-representative HR, and may produce biased results [22]. It should be noted that the HR is averaged over the event times rather than over the follow-up time. It is unchanged if the time scale is changed without disturbing the ordering of events.
-"
-https://bmcmedresmethodol.biomedcentral.com/articles/10.1186/1471-2288-10-20
